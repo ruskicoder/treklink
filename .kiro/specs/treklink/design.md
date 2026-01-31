@@ -110,7 +110,6 @@ graph TD
         ESP32 -- UART2 RX --> GPS[Neo-6M GPS]
         ESP32 -- I2C --> OLED[0.96 OLED<br/>128x64]
         ESP32 -- I2C --> IMU[MPU6050<br/>Accelerometer/Gyro]
-        ESP32 -- I2C --> RTC[DS3231 RTC]
         ESP32 -- GPIO --> BTN[Buttons x4]
         ESP32 -- GPIO --> SW[Slide Switch]
         ESP32 -- GPIO 13 --> MOSFET_CTRL[MOSFET Gate Control]
@@ -132,8 +131,8 @@ graph TD
 | | M1 | GPIO 19 | Mode control |
 | **GPS (Neo-6M)** | TX | GPIO 14 | ESP32 RX (UART2) |
 | | V_BCKP | V_BAT | Direct connection for Hot Start |
-| **I2C Bus** | SDA | GPIO 21 | Shared: OLED, MPU6050, DS3231 |
-| | SCL | GPIO 22 | Shared: OLED, MPU6050, DS3231 |
+| **I2C Bus** | SDA | GPIO 21 | Shared: OLED, MPU6050 |
+| | SCL | GPIO 22 | Shared: OLED, MPU6050 |
 | **MPU6050** | INT | GPIO 34 | Input Only (Fall detection wake) |
 | **TP5100** | CHRG | GPIO 35 | Input Only (LOW = Charging) |
 | **Power** | MOSFET Gate | GPIO 13 | Via NPN transistor |
@@ -182,6 +181,333 @@ Battery (+4.2V)
 - **VCC** connected to always-on rail (not power gated)
 - **Mode**: Configured to "Low Power Accelerometer Cycle Mode" (~10-20µA)
 - **INT Pin**: Wakes ESP32 on motion detection (or timer-based GPS checks for MVP simplicity)
+
+### 3.6 Breadboard Prototype Wiring
+
+This section provides detailed wiring instructions for the breadboard development phase using through-hole modules as specified in `BOM_Development.md`.
+
+#### 3.6.1 Power Distribution Breadboard
+
+```
+2x 21700 Battery Holder (Parallel)
+        │
+        ├──[+]───┬───> TP5100 IN+
+        │        ├───> BMS IN+ (if used)
+        │        ├───> IRF9540 Source (x3 for GPS/OLED/spare)
+        │        └───> 10kΩ Pull-up to MOSFET Gates
+        │
+        └──[-]───┴───> Common GND (breadboard negative rail)
+
+TP5100 OUT+ ────> Mini360 IN+
+TP5100 OUT- ────> GND
+
+Mini360 OUT+ (3.3V) ───┬───> ESP32 VIN (or 3.3V pin)
+                        ├───> LoRa E32 VCC
+                        ├───> MPU6050 VCC
+                        ├───> OLED VCC (via MOSFET drain)
+                        ├───> Neo-6M VCC (via MOSFET drain)
+                        └───> Breadboard positive rail (3.3V)
+
+Mini360 OUT- ───────────> Common GND
+```
+
+**Notes:**
+- Use **470µF capacitor** at TP5100 output for stability
+- Use **100µF capacitor** at Mini360 output
+- Connect **100nF ceramic capacitors** at each module VCC pin
+- Adjust Mini360 potentiometer to exactly **3.3V** before connecting modules
+
+#### 3.6.2 ESP32 DevKit Connections
+
+**ESP32 30-pin DevKit V1 Module to Breadboard:**
+
+| ESP32 Pin | Module | Signal | Wire Color (suggestion) |
+|-----------|--------|--------|------------------------|
+| **3.3V** | Power | Power rail | Red |
+| **GND** | Power | Ground rail | Black |
+| **GPIO 17** | LoRa E32 | TX (ESP32 TX2) | Orange |
+| **GPIO 16** | LoRa E32 | RX (ESP32 RX2) | Yellow |
+| **GPIO 27** | LoRa E32 | AUX (Wake interrupt) | Purple |
+| **GPIO 18** | LoRa E32 | M0 (Mode control) | Blue |
+| **GPIO 19** | LoRa E32 | M1 (Mode control) | Green |
+| **GPIO 14** | Neo-6M GPS | TX (ESP32 RX) | Brown |
+| **GPIO 21** | I2C Bus | SDA | White |
+| **GPIO 22** | I2C Bus | SCL | Gray |
+| **GPIO 34** | MPU6050 | INT (Input Only) | Light Blue |
+| **GPIO 35** | TP5100 | CHRG Status (Input Only) | Pink |
+| **GPIO 13** | MOSFET Gate | Control (via NPN transistor) | Violet |
+| **GPIO 12** | Buzzer | Active buzzer control | Cyan |
+| **GPIO 15** | Vibrator | Motor control (via 2N2222) | Magenta |
+| **GPIO 25** | Button | MENU button | Dark Blue |
+| **GPIO 26** | Button | SOS button | Dark Red |
+| **GPIO 32** | Button | UP button | Dark Green |
+| **GPIO 33** | Button | DOWN button | Dark Yellow |
+| **GPIO 4** | Switch | SLIDE ON/OFF | Dark Orange |
+
+#### 3.6.3 LoRa E32 Module Wiring
+
+**Ebyte E32-433T20D Module (7-pin breakout):**
+
+| E32 Pin | ESP32 GPIO | Notes |
+|---------|------------|-------|
+| VCC | 3.3V rail | **NOT 5V!** E32 is 3.3V logic |
+| GND | GND rail | |
+| RXD | GPIO 17 | ESP32 TX → E32 RX |
+| TXD | GPIO 16 | E32 TX → ESP32 RX |
+| AUX | GPIO 27 | Wake-on-Radio interrupt (pull-up 10kΩ internally) |
+| M0 | GPIO 18 | Mode control |
+| M1 | GPIO 19 | Mode control |
+| ANT | SMA connector | 17.5cm 433MHz whip antenna |
+
+**Mode Selection Truth Table:**
+| M1 | M0 | Mode |
+|----|-----|------|
+| 0 | 0 | Normal (TX/RX) |
+| 0 | 1 | Wake-Up (power saving listen) |
+| 1 | 0 | Power Saving (deep sleep) |
+| 1 | 1 | Configuration Mode |
+
+#### 3.6.4 I2C Bus Wiring (Shared Bus)
+
+**All I2C devices connect to the same SDA/SCL lines with pull-ups:**
+
+```
+ESP32 GPIO 21 (SDA) ───[4.7kΩ to 3.3V]───┬───> OLED SDA
+                                          └───> MPU6050 SDA
+
+ESP32 GPIO 22 (SCL) ───[4.7kΩ to 3.3V]───┬───> OLED SCL
+                                          └───> MPU6050 SCL
+```
+
+**I2C Addresses (7-bit):**
+- **OLED SSD1306**: 0x3C (default)
+- **MPU6050**: 0x68 (default, AD0 = GND)
+
+**No Address Conflict:** With DS3231 removed, no conflicts exist on the I2C bus.
+
+#### 3.6.5 GPS Neo-6M Wiring
+
+| Neo-6M Pin | Connection | Notes |
+|------------|------------|-------|
+| VCC | MOSFET Drain (power gated) | 3.3V when enabled |
+| GND | GND rail | |
+| TX | ESP32 GPIO 14 (RX) | NMEA data output |
+| RX | Not connected | No commands needed for MVP |
+| V_BCKP | Battery (+) | **Direct to battery for hot start!** |
+| PPS | Not connected | Pulse-per-second (optional) |
+
+**GPS Antenna:**
+- 25mm square ceramic patch with IPEX connector
+- Max 30mm wire length from module
+- Mount on top of enclosure for clear sky view
+
+#### 3.6.6 Power Gating Circuit (Breadboard Assembly)
+
+
+**For GPS Power Gating (using IRF9530N TO-220 P-MOSFET + S8050-D):**
+
+```
+Battery (+4.2V)
+    │
+    ├─── IRF9530N [Source Pin] (Right pin, facing flat side)
+    │           │
+    │       [Drain Pin] (Center) ──> Neo-6M VCC
+    │           │
+    │       [Gate Pin] (Left)
+    │           │
+    │       [10kΩ] Pull-up to Battery (+)
+    │           │
+    └───[1kΩ]───┤
+                │
+           S8050-D [Collector]
+                │
+           [Emitter] ──> GND
+                │
+           [Base] ──[1kΩ]──> ESP32 GPIO 13
+
+When GPIO 13 = HIGH: NPN ON → Gate LOW → MOSFET ON → GPS powered
+When GPIO 13 = LOW:  NPN OFF → Gate HIGH (via 10k pull-up) → MOSFET OFF → GPS unpowered
+```
+
+**For OLED Low-Side Switching (Silent Mode Support):**
+
+OLED VCC always connected to 3.3V, GND switched via S8050-D:
+
+```
+OLED GND ──> S8050-D [Collector]
+                │
+           [Emitter] ──> GND
+                │
+           [Base] ──[1kΩ]──> ESP32 GPIO 23
+
+When GPIO 23 = HIGH: NPN ON → OLED GND connected → Display ON
+When GPIO 23 = LOW:  NPN OFF → OLED GND disconnected → Display OFF
+```
+
+**Silent Mode Logic:**
+- GPS stays ON (GPIO 13 = HIGH)
+- OLED turns OFF (GPIO 23 = LOW)
+- Only vibration motor provides haptic feedback
+
+
+#### 3.6.7 Button Wiring (with Pull-down Resistors)
+
+```
+Each button:
+    [3.3V] ──[Push Button]──┬──> ESP32 GPIO
+                             │
+                         [10kΩ] Pull-down
+                             │
+                            GND
+```
+
+| Button | GPIO | Function |
+|--------|------|----------|
+| MENU | GPIO 25 | Click: Menu/Back, Hold 1s: Silent Mode |
+| SOS | GPIO 26 | Click: Ping, Hold 3s: SOS, Hold 5s: Cancel |
+| UP | GPIO 32 | Navigation |
+| DOWN | GPIO 33 | Navigation |
+
+**Slide Switch (SPDT):**
+- Center: to ESP32 GPIO 4
+- Side 1: to 3.3V (ON position)
+- Side 2: to GND (OFF position)
+- Add 10kΩ pull-down from GPIO 4 to GND
+
+#### 3.6.8 Audio/Haptic Wiring
+
+**Passive Buzzer (3.3V) - Requires PWM:**
+```
+3.3V ──[Passive Buzzer]──┬──> ESP32 GPIO 12 (PWM output)
+                         │
+                        GND
+```
+
+**Vibration Motor:**
+```
+3.3V ──[Vibration Motor]──┬──[2N2222 Collector]
+       [1N4001 Flyback Diode (cathode to 3.3V)]
+                           │
+                      [Emitter] ──> GND
+                           │
+                      [Base] ──[1kΩ]──> ESP32 GPIO 15
+```
+
+**RGB LED (Common Cathode, 5mm):**
+```
+3.3V ──[220Ω]──[Red LED Anode]──┐
+3.3V ──[220Ω]──[Green Anode]────┤──[Common Cathode]──> GND
+3.3V ──[220Ω]──[Blue Anode]─────┘
+
+(Or connect anodes to GPIOs for PWM control)
+```
+
+#### 3.6.9 Full Breadboard Layout Concept
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Breadboard 1 (Main - 830 point)                                │
+│                                                                  │
+│  [+3.3V Rail]════════════════════════════════════════════      │
+│                                                                  │
+│  [ESP32 DevKit]  [E32 LoRa]  [Neo-6M GPS]  [OLED]              │
+│   (30 pins)      (7 pins)     (6 pins)     (4 pins)            │
+│                                                                  │
+│  [MPU6050]  [Buttons x4]  [IRF9540 circuits]                  │
+│   (8 pins)  (4 pins)  (2 pins ea)   (x2 or x3)                 │
+│                                                                  │
+│  [GND Rail]══════════════════════════════════════════════       │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  Breadboard 2 (Power - 400 point)                               │
+│                                                                  │
+│  [Battery Holder] ──> [TP5100] ──> [Mini360] ──> [To Main BB]  │
+│   (2x 21700)        (Charger)     (Buck 3.3V)                   │
+│                                                                  │
+│  [470µF Cap]         [100µF Cap]   [USB-C Breakout for charging]│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 3.7 Perfboard Prototype Guidelines
+
+**Transition from Breadboard to Perfboard (~70x70mm or stacked smaller boards):**
+
+1. **Component Placement Strategy:**
+   - **Layer 1 (Bottom)**: Power distribution, TP5100, Mini360, MOSFETs, battery wiring
+   - **Layer 2 (Top)**: ESP32 module, LoRa module, GPS module, OLED, sensors
+   - **Vertical Mounting**: Stack boards using 10mm standoffs within 28mm height limit
+
+2. **Perfboard Soldering:**
+   - Solder modules using female headers for removability during debugging
+   - Bridge connections using solid-core wire on back side of perfboard
+   - Use point-to-point wiring for power distribution (avoid long traces)
+
+3. **Mechanical Mounting:**
+   - Adhesive mounting for rapid prototype
+   - M3 screw holes at corners for premium build
+
+4. **Testing Before Enclosure:**
+   - Verify all voltages with multimeter (3.3V rails, battery voltage)
+   - Test power gating (GPS/OLED should turn on/off with GPIO 13)
+   - Upload blink sketch to ESP32
+   - Test LoRa transmission between two devices
+
+### 3.8 Future PCB Design (70x70mm Custom Board)
+
+**PCB Layout Zones (for Phase 2 development):**
+
+```
+┌───────────────────────────────────────────────────────┐
+│  GPS Antenna (Top Center)                             │
+│  ┌─────────────────────────────────────────────┐     │
+│  │ [Neo-6M Module Footprint or Bare Chip]      │     │
+│  └─────────────────────────────────────────────┘     │
+│                                                        │
+│  [ESP32-WROOM Module]  [E32-433 Module/SX1278]        │
+│  ┌─────────┐            ┌────────────┐   [SMA]       │
+│  │         │            │            │   Connector    │
+│  │ ESP32   │            │  LoRa RF   │───[Antenna]   │
+│  │         │            │            │    17.5cm      │
+│  └─────────┘            └────────────┘                │
+│                                                        │
+│  [OLED Connector]  [MPU6050]                                 │
+│   (Pogo pins)                                         │
+│                                                        │
+│  [Buttons: MENU SOS UP DOWN] (8-12mm height)          │
+│  ●  ▬  ▲  ▼                                          │
+│                                                        │
+│  [Power Section - Bottom Left]                        │
+│  ┌──────────────────────────────────┐                │
+│  │ TP5100 → LDO/Buck → MOSFETs      │                │
+│  │ (or integrated BMS + regulator)  │                │
+│  └──────────────────────────────────┘                │
+│                                                        │
+│  Battery Connector (JST-PH or solder pads)            │
+│  USB-C (Right) | USB Serial (Left)                    │
+└───────────────────────────────────────────────────────┘
+```
+
+**PCB Layout Guidelines:**
+
+1. **Ground Plane**: Solid copper pour on bottom layer (Layer 2)
+2. **Power Routing**: Star topology from battery → regulator → modules (wide traces, 1mm+)
+3. **RF Considerations**:
+   - Keep LoRa RF section (E32/SX1278) isolated from digital sections
+   - Use ground plane under ESP32 antenna area (if using internal antenna)
+   - 50Ω trace for SMA antenna connection (calculate width for 2-layer FR4)
+4. **Decoupling**:
+   - 100nF ceramic capacitor at each IC VCC pin (as close as possible)
+   - 10µF tantalum at ESP32 and LoRa modules
+   - Bulk electrolytic (470µF) at battery input
+5. **MOSFETs Placement**: Near battery connector to minimize power trace length
+6. **Button Placement**: Top edge, aligned with enclosure holes
+
+**Future PCB Manufacturing:**
+- **Fab Service**: JLCPCB assembly service (SMD pre-solder) or ThegioiIC for quick turnaround
+- **Panelization**: 70x70mm single board or panelize from 100x100mm PCB
+- **Layers**: 2-layer FR4 (1.6mm thickness)
+- **Surface Finish**: ENIG (gold) for reliability in outdoor/humid conditions
 
 ---
 
@@ -852,8 +1178,10 @@ void LoRaService::transmit(Packet& packet) {
 | `MPU6050_light` | IMU interface |
 | `AESLib` or `mbedTLS` | AES-128-GCM encryption |
 | `RS-FEC` | Reed-Solomon FEC |
-| `RTClib` | DS3231 RTC driver |
 | `LoRa_E32` (Mischianti) | E32 module control (modified for fast switching) |
+
+> **Note:** ESP32 internal RTC is used for timekeeping, synchronized with GPS time - no external RTC library needed
+
 
 ### 9.3 PlatformIO Configuration
 

@@ -119,7 +119,8 @@
   - Implement `acquireFix()` with configurable timeout
   - Store last valid fix with timestamp
   - Add GPS pause/resume for TX interference mitigation
-  - _Requirements: REQ-NAV-01.1, REQ-NAV-01.2, REQ-NAV-01.3, REQ-NAV-01.4_
+  - **Synchronize ESP32 internal RTC with GPS time when fix is acquired** (for PRFH)
+  - _Requirements: REQ-NAV-01.1, REQ-NAV-01.2, REQ-NAV-01.3, REQ-NAV-01.4, REQ-NAV-01.5, REQ-SEC-02.3_
 
 - [ ] 11.1 Implement position fallback algorithms
   - Add Haversine distance and bearing calculation
@@ -141,12 +142,7 @@
   - Detect inactivity (10 seconds no movement)
   - _Requirements: REQ-SAF-02.1_
 
-- [ ] 13. Implement RTC Service - DS3231 driver
-  - Create `src/services/rtc_service.cpp` and `include/services/rtc_service.h`
-  - Integrate RTClib for DS3231 communication
-  - Implement `getUnixTimestamp()` for PRFH synchronization
-  - Add RTC calibration from GPS fix
-  - _Requirements: REQ-NAV-01.5, REQ-SEC-02.3_
+
 
 ---
 
@@ -366,7 +362,6 @@ graph TD
     T11 --> T11_1[11.1 Fallback Algorithms]
     T2 --> T12[12. IMU Service]
     T12 --> T12_1[12.1 Fall Detection]
-    T2 --> T13[13. RTC Service]
     
     T3 --> T14[14. Power Service]
     T14 --> T14_1[14.1 Deep Sleep]

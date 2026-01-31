@@ -94,7 +94,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 2. **IF** a GPS fix is acquired, **THEN** the system **SHALL** store the Latitude and Longitude.
 3. **WHEN** sending a heartbeat, ping, or message, **THEN** the system **SHALL** include the latest valid GPS coordinates (if Location Broadcast is enabled).
 4. **[Ubiquitous]** The GPS **SHALL** utilize a "Hot Start" strategy by maintaining backup power (V_BCKP connected to battery) for <1s fix times after sleep.
-5. **WHEN** the system detects a GPS lock, **THEN** it **SHALL** automatically calibrate the DS3231 RTC to sub-second accuracy to prevent mesh fragmentation due to clock drift.
+5. **WHEN** the system detects a GPS lock, **THEN** it **SHALL** automatically synchronize the ESP32 internal RTC with GPS time to prevent mesh fragmentation due to clock drift.
 
 #### REQ-NAV-02: Position Fallback & Dead Reckoning
 **User Story:** As a user, I want to have an estimated position even when GPS is unavailable, so that I can still be located.
@@ -155,7 +155,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **Acceptance Criteria:**
 1. **[Ubiquitous]** The system **SHALL** implement a Linear Congruential Generator (LCG) using a pre-shared 128-bit key as the seed to generate a hopping sequence across the 32 available E32 channels (410–441 MHz).
 2. **[Ubiquitous]** The system **SHALL NOT** operate on a static frequency; it **SHALL** calculate dynamic frequency offset: `Frequency = Base_Freq + (Channel_ID * Offset_Step)`.
-3. **[Ubiquitous]** The system **SHALL** synchronize the hopping index based on the Unix Timestamp from the DS3231 RTC; all nodes **SHALL** rotate to the same frequency window every T milliseconds.
+3. **[Ubiquitous]** The system **SHALL** synchronize the hopping index based on the Unix Timestamp from the ESP32 internal RTC (synchronized with GPS); all nodes **SHALL** rotate to the same frequency window every T milliseconds.
 4. **WHEN** a node fails to receive an ACK for three consecutive packets, **THEN** it **SHALL** enter "Search Mode," cycling through all 32 channels until it re-establishes contact with the mesh sequence.
 5. **IF** the RTC timestamp drifts, **THEN** the system **SHALL** use the next GPS-lock event to recalibrate.
 
@@ -274,7 +274,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 3. **The system SHALL** use 2x 21700 Li-ion cells in parallel for power (10,000 mAh).
 4. **The system SHALL** include a Neo-6M GPS module (NMEA Protocol) with V_BCKP connected directly to battery for Hot Start.
 5. **The system SHALL** include an MPU6050 6-Axis Accelerometer/Gyroscope for Fall Detection (Low Power Cycle Mode for Wake-on-Motion or timer-based for MVP).
-6. **The system SHALL** include a DS3231 High-Precision RTC module for PRFH synchronization.
+
 7. **The system SHALL** use AO3401 P-Channel MOSFETs for high-side power switching of peripherals.
 8. **The system SHALL** include 2N3904 or S8050 NPN transistors to drive MOSFET gates from ESP32 3.3V logic.
 
@@ -293,11 +293,12 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 
 **Acceptance Criteria:**
 1. **The enclosure SHALL** be rated for IP67 (dust tight, immersion up to 1m).
-2. **The enclosure SHALL** have dimensions approximately 115 x 90 x 55 mm (revised from initial 100x75x50mm).
+2. **The enclosure SHALL** have external dimensions of 125 x 80 x 32 mm with usable internal space of 120 x 74 x 28 mm.
 3. **The enclosure SHALL** be a vertical rectangle plastic enclosure.
-4. **The design SHALL** place the GPS antenna on top and the LoRa antenna (SMA Connector) on the right side.
-5. **All buttons SHALL** be covered in silicone for waterproofing; the slide switch **SHALL** be internally sealed with thick silicone.
-6. **The bottom SHALL** include a USB-C Charging Port and USB Serial Interface (Data/Logs) covered by a silicone flap.
+4. **The design SHALL** place the GPS antenna on top and the LoRa antenna (SMA Connector, 17.5cm length) on the right side.
+5. **All buttons SHALL** be 8-12mm height tactile switches almost touching the top of the enclosure with holes drilled for access.
+6. **The right side SHALL** include a USB-C Charging Port covered by a silicone flap.
+7. **The left side SHALL** include a USB Serial Interface (Data/Logs, separate from ESP32) for repairability covered by a silicone flap.
 
 #### REQ-HW-04: Pinout & Wiring
 **User Story:** As a developer, I want a defined pinout to implement the firmware correctly.
@@ -305,7 +306,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **Acceptance Criteria:**
 1. **LoRa (E32):** TX → GPIO 17, RX → GPIO 16, AUX → GPIO 27 (RTC_GPIO for wake), M0 → GPIO 18, M1 → GPIO 19.
 2. **GPS (Neo-6M):** TX → GPIO 14 (ESP32 RX), V_BCKP → V_BAT (direct).
-3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED, MPU6050, DS3231).
+3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED, MPU6050).
 4. **MPU6050 INT:** → GPIO 34 (Input Only, for wake detection).
 5. **TP5100 CHRG Status:** → GPIO 35 (Input Only).
 6. **MOSFET Gate Control:** → GPIO 13.
