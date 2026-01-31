@@ -2614,3 +2614,22 @@ Order PCB.
 3D Print Case.
 
 Final Assembly.
+
+## 8. Development Environment & Constraints
+
+This section defines the strictly enforced development environment. All coding and verification must adhere to these logic constraints.
+
+### 8.1 Programming Language & Framework
+*   **Language**: C++ (C++17 standard where supported).
+*   **Framework**: Arduino Framework for ESP32 (latest stable release).
+*   **Rationale**: Extensive library support for LoRa (Ebyte), Sensors (MPU6050, Neo-6M), and Settings (Preferences).
+
+### 8.2 Build System & IDE
+*   **Build System**: PlatformIO Core (CLI/VSCode Extension).
+*   **Project Config**: `platformio.ini` must be the single source of truth for build flags, library dependencies, and board settings.
+*   **Board Definition**: `esp32dev` (or specific variant matching the physical board).
+
+### 8.3 Simulation & Verification
+*   **Simulator**: Wokwi (VSCode Extension).
+*   **Config File**: `diagram.json` must be maintained to reflect the exact PIN mappings defined in Section 3.1.
+*   **Verification Policy**: All logic (Mesh routing, UI flows, Sensor I2C) must be verified in Wokwi before assuming it works on hardware.

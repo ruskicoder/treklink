@@ -132,3 +132,23 @@ TrekLink is an off-grid, decentralized communication device designed for hikers,
 
 ## Conclusion
 These requirements encompass the full scope of the TrekLink MVP as defined in the technical specifications. Adherence to these criteria ensures the delivery of a robust, secure, and energy-efficient off-grid communication device.
+
+### 8. Development Environment (REQ-ENV)
+
+#### REQ-ENV-01: Framework & Language
+**User Story:** As a developer, I want to use standard tools, so that the code is maintainable and compatible with libraries.
+**Acceptance Criteria:**
+1. **The system SHALL** be developed in C++ (C++17 standard where supported).
+2. **The system SHALL** utilize the Arduino Framework for ESP32 (latest stable release).
+
+#### REQ-ENV-02: Build System
+**User Story:** As a developer, I want a reproducible build environment, so that anyone can compile the project.
+**Acceptance Criteria:**
+1. **The system SHALL** use PlatformIO Core as the build system.
+2. **The project config SHALL** be defined completely in `platformio.ini`.
+
+#### REQ-ENV-03: Simulation
+**User Story:** As a developer, I want to verify logic without hardware, so that I can iterate quickly.
+**Acceptance Criteria:**
+1. **The system SHALL** be verifiable using the Wokwi simulator.
+2. **The simulation config SHALL** be maintained in `diagram.json` to match the hardware pinout.

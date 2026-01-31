@@ -106,3 +106,17 @@ graph TD
 
 ## 6. Conclusion
 This design is finalized for the MVP. It mitigates power risks (GPS backup), data loss risks (Flash wear), and security risks (Blind routing).
+
+## 7. Configuration & Environment
+
+### 7.1 Development Environment
+*   **Platform**: PlatformIO Core (CLI).
+*   **Framework**: Arduino Framework (ESP32).
+*   **Language**: C++17.
+
+### 7.2 Simulation Strategy (Wokwi)
+To ensure rapid iteration without constant hardware flashing, the following components must be verifiable in Wokwi:
+1.  **Mesh Logic**: Simulated by connecting multiple Wokwi instances via logic analyzer or UDP gatway (Advanced) or simply mocking the UART interface to simulate packet reception.
+2.  **UI Flows**: OLED display logic and button de-bouncing.
+3.  **Sensor Protocol**: I2C mocks for MPU6050 and UART mocks for NMEA GPS streams.
+
