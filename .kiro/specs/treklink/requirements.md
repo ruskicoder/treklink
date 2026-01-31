@@ -1,154 +1,412 @@
 # TrekLink MVP Requirements Specification
 
+> **Project Code:** EXE101-G1-TREKLINK  
+> **Version:** 1.2 (MVP Release - Consolidated SSOT)  
+> **Date:** January 28, 2026  
+> **Status:** APPROVED FOR DEVELOPMENT
+
+---
+
 ## Introduction
-TrekLink is an off-grid, decentralized communication device designed for hikers, skiers, and outdoor enthusiasts. It creates a local mesh network using LoRa technology to enable text messaging, location tracking, and SOS alerts without reliance on cellular infrastructure. This document defines the comprehensive functional and non-functional requirements for the TrekLink MVP, serving as the Single Source of Truth (SSOT) for development.
+
+TrekLink is an off-grid, decentralized communication device designed for hikers, survivalists, and rescue teams operating in "Dead Zones" (areas with no cellular coverage). It utilizes LoRa technology at 433MHz to create a self-healing mesh network for reliable text messaging, GPS tracking, and automated SOS alerting without reliance on external infrastructure.
+
+The MVP (Minimum Viable Product) focuses on a standalone hardware unit using pre-soldered modules. It prioritizes reliable 433MHz LoRa communication, proprietary managed flooding mesh protocols with Forward Error Correction (FEC), and essential survival UI. The device incorporates advanced features including Pseudo-Random Frequency Hopping (PRFH) for anti-jamming, AES-128-GCM encryption for security, and a Power Gated Architecture for extended battery life (72+ hours under standard use). Bluetooth and Wi-Fi AP features are architecturally prepared but disabled in this version.
+
+This document serves as the Single Source of Truth (SSOT) for development, engineering, and testing. It adheres to the EARS (Easy Approach to Requirements Syntax) format to ensure clarity, testability, and lack of ambiguity.
+
+---
+
+## Actors
+
+| Actor | Description |
+|-------|-------------|
+| **Tracker (User)** | A hiker, skier, or outdoor enthusiast carrying the device for safety and communication within a group. |
+| **Group Leader (Admin)** | A user with authority to define Channel IDs, Hop Limits, and coordinate group activities. |
+| **The Mesh (System)** | The autonomous network of TrekLink nodes relaying packets via managed flooding. |
+
+---
+
+## User Stories
+
+| ID | User Story |
+|----|------------|
+| **US.01** | As a Tracker, I want to send a "Help" message without looking at the screen so that I can signal distress immediately. |
+| **US.02** | As a Tracker, I want to see the direction and distance of my friends so I can regroup in dense foliage. |
+| **US.03** | As a Group Leader, I want to switch channels to avoid interference from other groups (Frequency Hopping). |
+| **US.04** | As a User, I want the device to automatically detect if I fall and become unconscious, sending an SOS on my behalf. |
+| **US.05** | As a User, I want to switch to "Silent Mode" to save battery and maintain stealth while still receiving haptic alerts. |
+| **US.06** | As a User, I want my communications to be encrypted so that eavesdroppers cannot read my messages or track my location. |
+| **US.07** | As a User, I want the device to last at least 3 days on a single charge so that I don't need to charge it during a multi-day trip. |
+
+---
 
 ## Requirements
 
-### 1. Communication & Networking (REQ-COM)
+### 1. Communication & Mesh Protocol (REQ-COM)
 
-#### REQ-COM-01: Mesh Network Topology
+#### REQ-COM-01: Managed Flooding Mesh
 **User Story:** As a user, I want my messages to reach their destination even if I don't have a direct line of sight, so that I can communicate reliably in complex terrain.
-**Acceptance Criteria:**
-1. **WHEN** a packet is received for another node, **THEN** the system **SHALL** re-broadcast it immediately if the TTL (Hop Count) is > 0.
-2. **IF** a packet has already been seen (based on Msg ID), **THEN** the system **SHALL** drop the packet to prevent broadcast storms.
-3. **WHILE** the device is on, **THEN** it **SHALL** listen for incoming LoRa packets according to the defined wake cycle.
 
-#### REQ-COM-02: Packet Handling & Protocol
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** utilize a Managed Flooding Mesh algorithm where every node re-broadcasts unique packets exactly once based on Message ID deduplication.
+2. **WHEN** a packet is received for another node, **THEN** the system **SHALL** re-broadcast it immediately if the Hop Count (TTL) is > 0.
+3. **IF** a packet has already been seen (based on Msg ID in Seen_Buffer), **THEN** the system **SHALL** drop the packet to prevent broadcast storms.
+4. **WHILE** the device is ON, **THEN** it **SHALL** listen for incoming LoRa packets according to the defined duty cycle (Wake-on-Radio mode).
+5. **[Ubiquitous]** The system **SHALL** operate as a De-centralized Gossip Protocol; every node **SHALL** act as a peer-router with no "Coordinator" or "Head" node.
+
+#### REQ-COM-02: Packet Structure & Protocol
 **User Story:** As a developer, I want an optimized packet structure, so that airtime is minimized and battery life is maximized.
-**Acceptance Criteria:**
-1. **WHEN** transmitting a message, **THEN** the system **SHALL** perform Forward Error Correction (FEC) using Reed-Solomon encoding to handle packet corruption.
-2. **IF** the payload exceeds the packet limit, **THEN** the system **SHALL** reject the message (MVP does not support fragmentation).
-3. **WHEN** a packet is received with `RSSI + (SNR * Factor)` below the defined threshold, **THEN** the system **SHALL** drop the packet (Link Quality Routing).
 
-#### REQ-COM-03: Message Types
-**User Story:** As a user, I want different ways to communicate, so that I can send quick updates or urgent alerts.
 **Acceptance Criteria:**
-1. **WHEN** the user selects a predefined message, **THEN** the system **SHALL** broadcast it to the target ID.
-2. **WHEN** an SOS is triggered, **THEN** the system **SHALL** broadcast a high-priority packet containing GPS coordinates to `0xFFFF` (Broadcast Address).
-3. **WHEN** a "Matrix Check" is requested (double-click SOS), **THEN** the system **SHALL** broadcast a ping and record responses to build a neighbor list.
+1. **[Ubiquitous]** The system **SHALL** constrain total packet size to <50 Bytes for LoRa airtime optimization.
+2. **WHEN** transmitting a packet, **THEN** the system **SHALL** include: Header (Magic Byte), Config Bitmask, Sender ID, Target ID (0xFF for Broadcast), Msg ID (nonce), Hop Count, Type, GPS Lat/Lon, Telemetry (Battery), Payload, and CRC.
+3. **WHEN** transmitting a message, **THEN** the system **SHALL** perform Forward Error Correction (FEC) using Reed-Solomon encoding to handle packet corruption.
+4. **IF** the payload exceeds the packet limit, **THEN** the system **SHALL** reject the message (MVP does not support fragmentation).
+5. **WHEN** a packet is received with `Link_Score = RSSI + (SNR * Factor)` below the defined threshold, **THEN** the system **SHALL** drop the packet (Link Quality Routing / ETX Logic).
+
+#### REQ-COM-03: Message Types & Priority
+**User Story:** As a user, I want different ways to communicate, so that I can send quick updates or urgent alerts.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** support the following message types: Text (0x01), Ping (0x02), SOS (0x03), and Ack (0x04).
+2. **WHEN** the user selects a predefined message, **THEN** the system **SHALL** broadcast it to the target ID.
+3. **WHEN** an SOS is triggered, **THEN** the system **SHALL** broadcast a high-priority packet containing GPS coordinates to `0xFF` (Broadcast Address) on ALL channels (ignoring channel filters).
+4. **WHEN** a "Matrix Check" is requested (double-click SOS), **THEN** the system **SHALL** broadcast a Location Ping Request and record responses to build a neighbor list for the Map Matrix.
+5. **[Ubiquitous]** SOS messages **SHALL** have the highest priority and **SHALL** override all other packets in the transmission queue.
+
+#### REQ-COM-04: Rebroadcast Modes
+**User Story:** As a Group Leader, I want to control how my device relays messages, so that I can prioritize local group communication or extend network range.
+
+**Acceptance Criteria:**
+1. **WHEN** "Rebroadcast Mode" is set to "Local Only," **THEN** the system **SHALL** only relay packets matching the current Channel ID.
+2. **WHEN** "Rebroadcast Mode" is set to "All," **THEN** the system **SHALL** relay valid packets from any channel to extend network range, but **SHALL NOT** display them in the Received Log.
+
+---
 
 ### 2. Navigation & Location (REQ-NAV)
 
 #### REQ-NAV-01: GPS Position Tracking
 **User Story:** As a user, I want to know where I am and where my friends are, so that we don't get lost.
-**Acceptance Criteria:**
-1. **WHILE** in Active Mode, **THEN** the system **SHALL** power the Neo-6M GPS module and attempt to acquire a fix.
-2. **IF** a fix is acquired, **THEN** the system **SHALL** store the Latitude and Longitude.
-3. **WHEN** sending a heartbeat or message, **THEN** the system **SHALL** include the latest valid GPS coordinates.
 
-#### REQ-NAV-02: Distance & Direction Display
-**User Story:** As a user, I want to see how far away my group members are, so that I can gauge travel time.
 **Acceptance Criteria:**
-1. **WHEN** viewing the "Map" screen, **THEN** the system **SHALL** display relative positions of other nodes.
-2. **IF** a target node is selected, **THEN** the system **SHALL** calculate and display the distance (in meters/km) using the Haversine formula.
+1. **[Ubiquitous]** The system **SHALL** attempt to acquire GPS lock via the Neo-6M module at intervals defined in Power Settings.
+2. **IF** a GPS fix is acquired, **THEN** the system **SHALL** store the Latitude and Longitude.
+3. **WHEN** sending a heartbeat, ping, or message, **THEN** the system **SHALL** include the latest valid GPS coordinates (if Location Broadcast is enabled).
+4. **[Ubiquitous]** The GPS **SHALL** utilize a "Hot Start" strategy by maintaining backup power (V_BCKP connected to battery) for <1s fix times after sleep.
+5. **WHEN** the system detects a GPS lock, **THEN** it **SHALL** automatically calibrate the DS3231 RTC to sub-second accuracy to prevent mesh fragmentation due to clock drift.
+
+#### REQ-NAV-02: Position Fallback & Dead Reckoning
+**User Story:** As a user, I want to have an estimated position even when GPS is unavailable, so that I can still be located.
+
+**Acceptance Criteria:**
+1. **IF** GPS lock is unavailable (HDOP > 5), **THEN** the system **SHALL** fallback to RSSI Triangulation (if >2 nodes are available with known positions).
+2. **IF** RSSI Triangulation is not possible, **THEN** the system **SHALL** use Dead Reckoning: `Last_Known_Pos + (Compass_Heading * Est_Speed * Time_Delta)` using MPU6050 data.
+3. **WHEN** the user Double Clicks the SOS button (in normal state), **THEN** the system **SHALL** broadcast a "Location Ping Request" to all nodes to update the Map Matrix.
+
+#### REQ-NAV-03: Distance & Direction Display
+**User Story:** As a user, I want to see how far away my group members are, so that I can gauge travel time.
+
+**Acceptance Criteria:**
+1. **WHEN** viewing the "Map" screen, **THEN** the system **SHALL** display relative positions of other nodes as dots on a dot-matrix display (self at center 0,0).
+2. **IF** a target node is selected (using Up/Down buttons), **THEN** the system **SHALL** calculate and display: Device ID, Distance (in meters/km using Haversine formula), and Direction (compass bearing).
+3. **WHEN** a node is selected on the map, **THEN** the system **SHALL** display RSSI/SNR if GPS data is unavailable.
+
+---
 
 ### 3. Safety & Emergency (REQ-SAF)
 
-#### REQ-SAF-01: Fall Detection
-**User Story:** As a user, I want the device to call for help if I fall and become unresponsive, so that I can be rescued even if incapacitated.
-**Acceptance Criteria:**
-1. **WHEN** the MPU6050 detects freefall followed by a high-G impact and user inactivity, **THEN** the system **SHALL** enter a "Pre-Alarm" state.
-2. **WHILE** in "Pre-Alarm" state, **THEN** the system **SHALL** sound a local alarm and vibrate for 30 seconds.
-3. **IF** the user does not cancel the alarm within 30 seconds (Double Click), **THEN** the system **SHALL** automatically trigger an SOS broadcast.
-4. **WHEN** the SOS logic is active (Auto or Manual), the user **MUST** Hold the SOS button for 5 seconds to Cancel the emergency state.
-
-#### REQ-SAF-02: SOS Activation
+#### REQ-SAF-01: SOS Activation
 **User Story:** As a user, I want a quick way to signal distress, so that I can get help immediately.
-**Acceptance Criteria:**
-1. **WHEN** the user holds the SOS button for > 3 seconds, **THEN** the system **SHALL** activate SOS mode and broadcast distress signals.
-2. **WHILE** in SOS mode, **THEN** the system **SHALL** transmit continuously for 1 minute, then switch to a pulsed interval (every 30s) indefinitely until cancelled or battery depletion.
 
-### 4. Security & Stealth (REQ-SEC)
+**Acceptance Criteria:**
+1. **WHEN** the SOS button is Held for 3 seconds, **THEN** the system **SHALL** trigger the SOS Routine: Broadcast High Priority SOS Packet at maximum TX power + Loud Buzzer + Strobing LED.
+2. **WHEN** the SOS button is Clicked once, **THEN** the system **SHALL** broadcast the current location (Ping) without triggering the audio alarm.
+3. **WHILE** in SOS mode, **THEN** the system **SHALL** transmit continuously for 1 minute (Phase 1: Immediate), then switch to pulsed interval transmission (every 30 seconds, Phase 2: Beacon) indefinitely until cancelled or battery depletion.
+4. **WHEN** the user Holds the SOS button for 5 seconds during active SOS, **THEN** the system **SHALL** cancel the SOS mode and confirm with a long vibration.
+5. **IF** the system triggers an SOS, **THEN** it **SHALL** bypass Adaptive Power Control and transmit at maximum power to prioritize reach over stealth.
+
+#### REQ-SAF-02: Fall Detection
+**User Story:** As a user, I want the device to call for help if I fall and become unresponsive, so that I can be rescued even if incapacitated.
+
+**Acceptance Criteria:**
+1. **WHILE** the device is ON, **THEN** the system **SHALL** continuously monitor MPU6050 data for a specific fall signature: Freefall (>0.5s) followed by High Impact (>3G) followed by Inactivity (10s).
+2. **WHEN** a Fall signature is detected, **THEN** the system **SHALL** enter a "Pre-Alarm" state with haptic/visual warning for 30 seconds.
+3. **WHILE** in "Pre-Alarm" state, **THEN** the system **SHALL** sound a local alarm and vibrate continuously.
+4. **IF** the user Double Clicks the SOS button during the Pre-Alarm State, **THEN** the system **SHALL** cancel the auto-SOS and confirm as "Safe."
+5. **IF** the user does NOT cancel the alarm within 30 seconds, **THEN** the system **SHALL** automatically trigger the full SOS Routine.
+
+---
+
+### 4. Security & Electronic Counter-Measures (REQ-SEC)
 
 #### REQ-SEC-01: Encryption
 **User Story:** As a user, I want my communications to be private, so that eavesdroppers cannot read my messages or track my location.
-**Acceptance Criteria:**
-1. **WHEN** forming a packet, **THEN** the system **SHALL** encrypt the payload using AES-128-GCM with a pre-shared key.
-2. **IF** a received packet fails decryption, **THEN** the system **SHALL** discard it silently.
 
-#### REQ-SEC-02: Anti-Jamming (PRFH)
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** perform AES-128-GCM (Galois/Counter Mode) encryption on the ESP32 before data is sent to the E32 UART, ensuring Authenticated Encryption with Associated Data (AEAD).
+2. **[Ubiquitous]** The system **SHALL** utilize the current Channel Value as the seed for both encryption and Frequency Hopping.
+3. **IF** a received packet fails decryption (CRC mismatch after AES decrypt), **THEN** the system **SHALL** discard it silently.
+4. **[Ubiquitous]** The system **SHALL** hash all headers; Target ID and Sender ID **SHALL NOT** be sent in plaintext but **SHALL** be obfuscated using a rotating hash keyed to the current PRFH index to prevent ELINT traffic analysis.
+
+#### REQ-SEC-02: Anti-Jamming (Pseudo-Random Frequency Hopping)
 **User Story:** As a tactical user, I want communication to persist even if someone tries to jam the frequency.
-**Acceptance Criteria:**
-1. **WHILE** operating, **THEN** the system **SHALL** follow a Pseudo-Random Frequency Hopping (PRFH) schedule.
-2. **WHEN** the hop interval expires, **THEN** the system **SHALL** retune the LoRa module to the next frequency channel determined by the LCG algorithm seeded by the Shared Key.
-3. **IF** the RTC timestamp drifts, **THEN** the system **SHALL** attempt to re-sync with the network timeleader (future enhancement, MVP uses manual sync or loose tolerance).
 
-#### REQ-SEC-03: Stealth / Silent Mode
-**User Story:** As a user, I want to operate the device without making noise or light, so that I remain undetected.
 **Acceptance Criteria:**
-1. **WHEN** the user initiates "Silent Mode" (via Menu hold or Switch), **THEN** the system **SHALL** disable the OLED display, Status LED, and Buzzer.
+1. **[Ubiquitous]** The system **SHALL** implement a Linear Congruential Generator (LCG) using a pre-shared 128-bit key as the seed to generate a hopping sequence across the 32 available E32 channels (410–441 MHz).
+2. **[Ubiquitous]** The system **SHALL NOT** operate on a static frequency; it **SHALL** calculate dynamic frequency offset: `Frequency = Base_Freq + (Channel_ID * Offset_Step)`.
+3. **[Ubiquitous]** The system **SHALL** synchronize the hopping index based on the Unix Timestamp from the DS3231 RTC; all nodes **SHALL** rotate to the same frequency window every T milliseconds.
+4. **WHEN** a node fails to receive an ACK for three consecutive packets, **THEN** it **SHALL** enter "Search Mode," cycling through all 32 channels until it re-establishes contact with the mesh sequence.
+5. **IF** the RTC timestamp drifts, **THEN** the system **SHALL** use the next GPS-lock event to recalibrate.
+
+#### REQ-SEC-03: Anti-Tampering & Replay Prevention
+**User Story:** As a user, I want my messages to be protected from being replayed or tampered with.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** track Msg ID (Random Nonce) in the Seen_Buffer.
+2. **IF** a packet with a duplicate Msg ID is received (replay attack), **THEN** the system **SHALL** drop the packet immediately.
+3. **IF** a packet is injected by a rogue device without the correct Channel Key, **THEN** it **SHALL** fail AES decryption (CRC mismatch) and be discarded silently.
+
+#### REQ-SEC-04: Stealth / Silent Mode (Physical Security)
+**User Story:** As a user, I want to operate the device without making noise or light, so that I remain undetected.
+
+**Acceptance Criteria:**
+1. **WHEN** the user initiates "Silent Mode" (Hold MENU button for 1 second), **THEN** the system **SHALL** disable the OLED display, Status LED, and Buzzer.
 2. **WHILE** in Silent Mode, **THEN** the system **SHALL** use haptic vibration for all alerts and confirmations.
-3. **IF** adaptive power control is active, **THEN** the system **SHALL** output the minimum RF power required to reach the next hop.
+3. **WHILE** in Silent Mode, **THEN** the system **SHALL** logically disable visual outputs even if buttons are pressed (preventing light leakage).
+4. **WHEN** the user Holds the MENU button for 1 second again, **THEN** the system **SHALL** exit Silent Mode and return to Active Mode.
+
+---
 
 ### 5. Power Management (REQ-PWR)
 
-#### REQ-PWR-01: Smart Sleep & Duty Cycle
+#### REQ-PWR-01: Battery Life Target
 **User Story:** As a user, I want the battery to last for several days, so that I don't need to charge it during a trip.
-**Acceptance Criteria:**
-1. **WHILE** idle, **THEN** the ESP32 **SHALL** enter Deep Sleep mode.
-2. **WHEN** the LoRa module (in Wake-Up mode) detects a preamble, **THEN** it **SHALL** wake the ESP32 via the AUX pin.
-3. **IF** no activity occurs for a defined timeout, **THEN** the system **SHALL** return to sleep.
 
-#### REQ-PWR-02: Power Gating
-**User Story:** As a developer, I want to cut power to unused sensors, so that leakage current is eliminated.
 **Acceptance Criteria:**
-1. **WHEN** the GPS is not required (e.g., inside sleep cycle), **THEN** the system **SHALL** disable the GPS MOSFET.
-2. **WHEN** the OLED is off, **THEN** the system **SHALL** disable the OLED MOSFET.
-3. **WHEN** the device is switched OFF via the physical slide switch, **THEN** the system **SHALL** enter a hard-off state (< 10uA consumption).
+1. **[Ubiquitous]** The system **SHALL** operate for a minimum of 72 hours (3 days) on a full charge under standard mesh traffic (target: 5+ days, theoretical: 30+ days with power gating).
+2. **[Ubiquitous]** The system **SHALL** utilize 2x 21700 Li-ion cells in parallel (10,000 mAh effective capacity).
+
+#### REQ-PWR-02: Smart Sleep & Duty Cycle
+**User Story:** As a developer, I want to maximize battery life through intelligent power management.
+
+**Acceptance Criteria:**
+1. **WHILE** idle (State A: Deep Mesh Sleep), **THEN** the ESP32 **SHALL** enter Deep Sleep mode (~10µA), and the E32 **SHALL** operate in Mode 2 (Power Saving, ~20µA, 2s sleep/50ms wake cycle for preamble sniffing).
+2. **WHEN** the LoRa module (in Wake-Up mode) detects a preamble, **THEN** it **SHALL** pull AUX pin LOW to trigger an ESP32 RTC_GPIO interrupt, waking the main MCU (State B: Active Receive).
+3. **IF** no activity occurs for a defined screen timeout, **THEN** the system **SHALL** return to sleep.
+4. **WHEN** motion is detected (timer-based GPS checks for MVP), **THEN** the system **SHALL** enter State C: Active Tracking (Wake → Turn ON GPS MOSFET → Acquire Fix → Transmit → Turn OFF GPS → Sleep).
+
+#### REQ-PWR-03: Power Gating
+**User Story:** As a developer, I want to cut power to unused sensors, so that leakage current is eliminated.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** implement Power Gating via P-Channel MOSFETs (AO3401) configured as High-Side Switches.
+2. **WHEN** the GPS is not required (during sleep), **THEN** the system **SHALL** disable the GPS MOSFET (cutting main VCC to Neo-6M, while V_BCKP remains connected).
+3. **WHEN** the OLED is off, **THEN** the system **SHALL** disable the OLED MOSFET.
+4. **WHEN** the device is switched OFF via the physical slide switch, **THEN** the system **SHALL** enter a hard-off state (<10µA consumption) but allow charging circuitry to function.
+
+#### REQ-PWR-04: Low Power Indicators (LPI)
+**User Story:** As a user, I want the device to minimize its RF footprint when possible.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** utilize Spread Factor 12 (SF12) to maximize coding gain, allowing signal recovery at -20dB SNR.
+2. **[Ubiquitous]** The system **SHALL** implement Adaptive Power Control (APC): Nodes **SHALL** exchange RSSI data and automatically command the E32 to drop power from 100mW (20dBm) to 10mW (10dBm) if link margin exceeds 15dB.
+3. **WHEN** a node receives a packet with High RSSI (>-60dBm), **THEN** it **SHALL** piggyback a "Power Down" command in the ACK.
+4. **[Ubiquitous]** The system **SHALL** calculate and display Airtime/Channel Utilization % to help users understand the local RF environment.
+
+---
 
 ### 6. User Interface (REQ-UI)
 
-#### REQ-UI-01: Dashboard & Information
-**User Story:** As a user, I want to see the system status at a glance, so that I know my connectivity and battery level.
-**Acceptance Criteria:**
-1. **WHEN** the display is on, **THEN** the Main Dashboard **SHALL** show: Signal Strength (RSSI), Active Nodes Count, Battery Level, and Current Time.
-2. **IF** valid GPS data is available, **THEN** the system **SHALL** display an indicator or coordinate snippet.
-
-#### REQ-UI-02: Controls
+#### REQ-UI-01: Physical Controls
 **User Story:** As a user, I want simple physical controls, so that I can operate the device with gloves.
+
 **Acceptance Criteria:**
-1. **WHEN** the "Menu" button is pressed, **THEN** the system **SHALL** cycle through available screens (Dashboard, Map, Messages, Settings).
-2. **WHEN** "Up" or "Down" buttons are pressed, **THEN** the system **SHALL** scroll through lists or adjust zoom on the map.
-3. **WHEN** the "SOS" button is single-clicked, **THEN** the system **SHALL** send a standard "Ping".
+
+| Component | Action | Function |
+|-----------|--------|----------|
+| Slide Switch | Slide ON | Active Mode: Screen, Sound, Vibrate enabled. |
+| Slide Switch | Slide OFF | System Shutdown. |
+| Side Button (MENU) | Click | Menu / Back: Opens main menu or goes back. |
+| Side Button (MENU) | Hold (1s) | Toggle Silent Mode. |
+| SOS Button | Click (1x) | Ping: Broadcast current location. |
+| SOS Button | Double Click | Matrix Request (Normal) / Confirm Safe (Fall State). |
+| SOS Button | Hold (3s) | SOS: Trigger Emergency Broadcast. |
+| SOS Button | Hold (5s) | Cancel active SOS. |
+| Up / Down | Click | Navigation in Menu / Scroll Messages. |
+| Up + Down | Combo | Quick Reply: Selects first preset message. |
+
+#### REQ-UI-02: Dashboard Display
+**User Story:** As a user, I want to see the system status at a glance, so that I know my connectivity and battery level.
+
+**Acceptance Criteria:**
+1. **WHEN** the display is ON, **THEN** the Main Dashboard **SHALL** show:
+   - **Top Bar:** Signal Strength (RSSI icon), Number of Active Nodes, Battery Level (% and icon).
+   - **Middle Area:** Scrolling log of last 3 messages (Incoming/Outgoing), with SOS messages blinking if urgent.
+   - **Bottom Bar:** Channel Utilization (Airtime %), GPS Fix Status (2D/3D/None), Current Time (Clock).
+2. **IF** valid GPS data is available, **THEN** the system **SHALL** display a "3D" or "2D" indicator.
+3. **IF** GPS is unavailable, **THEN** the system **SHALL** display "---" or a "No GPS" indicator.
+
+#### REQ-UI-03: Menu Navigation
+**User Story:** As a user, I want to access device functions through a clear menu structure.
+
+**Acceptance Criteria:**
+1. **WHEN** the "Menu" button is clicked, **THEN** the system **SHALL** display the main menu with the following options:
+   - **Ping Location:** Force transmit coordinates.
+   - **Send Message:** Select from Preset List (e.g., "Safe", "Wait", "Lost", "Help", "Moving", "Stop").
+   - **Logs:** View Received (with RSSI/SNR/Hop Count details), View Sent.
+   - **Map & Coord:** Dot Matrix Map, Raw GPS Data.
+   - **Device Settings:** Set Channel ID, Set Device ID.
+   - **System Settings:** LoRa Config (Freq, Baud, Power, Hop Limit), Rebroadcast Mode (All/Local), Power Settings (GPS Interval, Screen Timeout, LED On/Off), Wireless (BT/WiFi - Placeholder), Location Broadcast Settings (Precision: High/Med/Low/Off, Interval).
+2. **WHEN** "Up" or "Down" buttons are pressed, **THEN** the system **SHALL** scroll through menu options or lists.
+3. **WHEN** navigating within the menu, **THEN** the SOS button single-click **SHALL** continue to broadcast a Ping (safety priority).
+
+---
 
 ### 7. Hardware Specifications (REQ-HW)
 
-#### REQ-HW-01: Components & Layout
+#### REQ-HW-01: Core Components (BOM)
 **User Story:** As a hardware engineer, I want a defined BOM, so that the device works as designed.
-**Acceptance Criteria:**
-1. **The system SHALL** utilize the ESP32-WROOM-32 as the main MCU.
-2. **The system SHALL** utilize the Ebyte E32-433T20D for LoRa communication.
-3. **The system SHALL** use 2x 21700 Li-ion cells in parallel for power.
-4. **The system SHALL** include a Neo-6M GPS and MPU6050 Accelerometer.
-5. **The system SHALL** use an AO3401 P-Channel MOSFET for high-side switching of peripherals.
 
-#### REQ-HW-02: Physical Enclosure
+**Acceptance Criteria:**
+1. **The system SHALL** utilize the ESP32-WROOM-32 as the main MCU (Dual Core: Core 0 for LoRa/Mesh, Core 1 for UI/Sensors).
+2. **The system SHALL** utilize the Ebyte E32-433T20D for LoRa communication (433MHz, UART Interface, 100mW).
+3. **The system SHALL** use 2x 21700 Li-ion cells in parallel for power (10,000 mAh).
+4. **The system SHALL** include a Neo-6M GPS module (NMEA Protocol) with V_BCKP connected directly to battery for Hot Start.
+5. **The system SHALL** include an MPU6050 6-Axis Accelerometer/Gyroscope for Fall Detection (Low Power Cycle Mode for Wake-on-Motion or timer-based for MVP).
+6. **The system SHALL** include a DS3231 High-Precision RTC module for PRFH synchronization.
+7. **The system SHALL** use AO3401 P-Channel MOSFETs for high-side power switching of peripherals.
+8. **The system SHALL** include 2N3904 or S8050 NPN transistors to drive MOSFET gates from ESP32 3.3V logic.
+
+#### REQ-HW-02: Interface Components
+**User Story:** As a user, I want clear feedback from the device.
+
+**Acceptance Criteria:**
+1. **The system SHALL** include a 0.96" OLED Display (I2C, 128x64 resolution).
+2. **The system SHALL** include an Active Buzzer (5V) for audible alerts.
+3. **The system SHALL** include a Vibration Motor (Coin Type) for haptic feedback.
+4. **The system SHALL** include a Status LED (RGB) for visual indicators.
+5. **The system SHALL** include 4x Tactile Buttons (MENU, SOS, UP, DOWN) and 1x Slide Switch (2-Position: ON/OFF).
+
+#### REQ-HW-03: Physical Enclosure
 **User Story:** As a user, I want a rugged device, so that it survives outdoor conditions.
+
 **Acceptance Criteria:**
 1. **The enclosure SHALL** be rated for IP67 (dust tight, immersion up to 1m).
-2. **The enclosure SHALL** have dimensions approximately 125x80x32mm.
-3. **The design SHALL** place both the GPS and LoRa antennas on the top face of the enclosure, separated to opposite corners to minimize near-field interference.
+2. **The enclosure SHALL** have dimensions approximately 115 x 90 x 55 mm (revised from initial 100x75x50mm).
+3. **The enclosure SHALL** be a vertical rectangle plastic enclosure.
+4. **The design SHALL** place the GPS antenna on top and the LoRa antenna (SMA Connector) on the right side.
+5. **All buttons SHALL** be covered in silicone for waterproofing; the slide switch **SHALL** be internally sealed with thick silicone.
+6. **The bottom SHALL** include a USB-C Charging Port and USB Serial Interface (Data/Logs) covered by a silicone flap.
 
-## Conclusion
-These requirements encompass the full scope of the TrekLink MVP as defined in the technical specifications. Adherence to these criteria ensures the delivery of a robust, secure, and energy-efficient off-grid communication device.
+#### REQ-HW-04: Pinout & Wiring
+**User Story:** As a developer, I want a defined pinout to implement the firmware correctly.
 
-### 8. Development Environment (REQ-ENV)
+**Acceptance Criteria:**
+1. **LoRa (E32):** TX → GPIO 17, RX → GPIO 16, AUX → GPIO 27 (RTC_GPIO for wake), M0 → GPIO 18, M1 → GPIO 19.
+2. **GPS (Neo-6M):** TX → GPIO 14 (ESP32 RX), V_BCKP → V_BAT (direct).
+3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED, MPU6050, DS3231).
+4. **MPU6050 INT:** → GPIO 34 (Input Only, for wake detection).
+5. **TP5100 CHRG Status:** → GPIO 35 (Input Only).
+6. **MOSFET Gate Control:** → GPIO 13.
+7. **Buzzer:** → GPIO 12.
+8. **Vibrator:** → GPIO 15.
+9. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 26, BTN_UP → GPIO 32, BTN_DOWN → GPIO 33.
+10. **Slide Switch:** SW_SLIDE → GPIO 4.
+
+---
+
+### 8. Data & Storage (REQ-DAT)
+
+#### REQ-DAT-01: Message Logging
+**User Story:** As a user, I want to review past messages and events.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** reserve 75% of EEPROM/NVS memory for Message Logs implemented as a Circular Buffer.
+2. **[Ubiquitous]** The system **SHALL** reserve 25% of EEPROM/NVS memory for Settings, Device ID, and Preset Messages.
+3. **WHEN** viewing the Logs menu, **THEN** the system **SHALL** display message metadata including RSSI, SNR, Hop Count, and Timestamp.
+4. **[Ubiquitous]** Logs **SHALL** be stored in a RAM Ring Buffer and only written to Flash on Buffer Full or Critical Event (SOS) to minimize flash wear.
+
+#### REQ-DAT-02: Preset Messages
+**User Story:** As a user, I want quick access to common messages without typing.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** support a minimum of 8 preset messages stored in non-volatile memory.
+2. **The default preset messages SHALL include:** "Safe", "Help", "Wait", "Lost", "Moving North", "Moving South", "Stop", "Come to Me".
+3. **WHEN** the user selects a preset, **THEN** the system **SHALL** broadcast it with the current GPS coordinates (if enabled).
+
+---
+
+### 9. Development Environment (REQ-ENV)
 
 #### REQ-ENV-01: Framework & Language
 **User Story:** As a developer, I want to use standard tools, so that the code is maintainable and compatible with libraries.
+
 **Acceptance Criteria:**
-1. **The system SHALL** be developed in C++ (C++17 standard where supported).
+1. **The system SHALL** be developed in C++ (C++17 standard where supported by the Arduino framework).
 2. **The system SHALL** utilize the Arduino Framework for ESP32 (latest stable release).
+3. **The system SHALL** integrate a Reed-Solomon FEC library compatible with Arduino/ESP32.
 
 #### REQ-ENV-02: Build System
 **User Story:** As a developer, I want a reproducible build environment, so that anyone can compile the project.
+
 **Acceptance Criteria:**
 1. **The system SHALL** use PlatformIO Core as the build system.
-2. **The project config SHALL** be defined completely in `platformio.ini`.
+2. **The project configuration SHALL** be defined completely in `platformio.ini`.
 
 #### REQ-ENV-03: Simulation
 **User Story:** As a developer, I want to verify logic without hardware, so that I can iterate quickly.
+
 **Acceptance Criteria:**
-1. **The system SHALL** be verifiable using the Wokwi simulator.
-2. **The simulation config SHALL** be maintained in `diagram.json` to match the hardware pinout.
+1. **The system SHALL** be verifiable using the Wokwi simulator for UI flows, button debouncing, and I2C/UART mock protocols.
+2. **The simulation configuration SHALL** be maintained in `diagram.json` to match the hardware pinout.
+
+---
+
+## Operational Scenarios
+
+### Scenario A: The Silent SOS
+1. User slides power switch to ON.
+2. User holds MENU button for 1 second; device enters SILENT Mode (Screen Off, Sound Off).
+3. User slips and breaks a leg. User holds SOS Button for 3 seconds.
+4. Device Vibrates 3 times (confirming activation).
+5. Device transmits High Priority SOS Packet (Broadcast to ALL channels, bypassing PRFH restrictions, at maximum power).
+6. Nearby nodes receive SOS; their screens flash "SOS DETECTED".
+7. Rescuers navigate to the coordinates provided in the packet using the Dot Matrix Map.
+
+### Scenario B: Group Coordination
+1. Leader sets Device to Channel 5.
+2. Leader selects "Send Message" → "Come to Me".
+3. Device broadcasts packet with Target=0xFF but encrypted/hopped with Key=Channel5.
+4. Only devices on Channel 5 decrypt and display "Leader: Come to Me".
+5. Devices on Channel 3 receive the RF signal but fail decryption/frequency check and ignore it.
+
+### Scenario C: Adaptive Jamming Evasion
+1. A localized jammer begins a broadband sweep of the 433MHz spectrum.
+2. TrekLink Node A detects high noise floor and failed ACKs (3 consecutive failures).
+3. Node A enters "Search Mode," calculating the next frequencies in the PRFH sequence based on its internal RTC.
+4. Node A switches its E32 CHAN register and successfully transmits to Node B, which has moved to the same frequency.
+5. The Jammer remains focused on the previous frequency, rendered ineffective.
+
+### Scenario D: Stealth Insertion / Adaptive Power
+1. A Search & Rescue team enters a sensitive area.
+2. TrekLink nodes detect they are within 100m of each other (High RSSI > -60dBm).
+3. The Adaptive Power Control drops TX power to 10mW (10dBm).
+4. The RF signature becomes indistinguishable from background electronic noise at a distance of 1km, preventing detection by unauthorized parties while maintaining full group mesh connectivity.
+
+### Scenario E: Automatic Fall Detection
+1. User is hiking alone with device in Active Mode.
+2. User falls from a ledge (Freefall > 0.5s detected by MPU6050).
+3. Impact occurs (> 3G acceleration detected).
+4. User becomes unconscious (Inactivity for 10 seconds detected).
+5. Device enters Pre-Alarm State: buzzer sounds locally, vibrator pulses for 30 seconds.
+6. User does not respond (no Double-Click on SOS button).
+7. After 30 seconds, device automatically triggers full SOS Routine, broadcasting coordinates to all nodes.
+
+---
+
+## Conclusion
+
+These requirements encompass the full scope of the TrekLink MVP as defined in the technical specifications. Adherence to these criteria ensures the delivery of a robust, secure, energy-efficient, and resilient off-grid communication device suitable for emergency and decentralized communications in challenging environments.
+
+This document is the Single Source of Truth (SSOT) for all development, engineering, and testing efforts.
