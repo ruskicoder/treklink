@@ -1,8 +1,8 @@
 # TrekLink MVP Requirements Specification
 
 > **Project Code:** EXE101-G1-TREKLINK  
-> **Version:** 1.2 (MVP Release - Consolidated SSOT)  
-> **Date:** January 28, 2026  
+> **Version:** 1.3 (MVP Release - Consolidated SSOT)  
+> **Date:** February 2, 2026  
 > **Status:** APPROVED FOR DEVELOPMENT
 
 ---
@@ -283,9 +283,9 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 
 **Acceptance Criteria:**
 1. **The system SHALL** include a 0.96" OLED Display (I2C, 128x64 resolution).
-2. **The system SHALL** include an Active Buzzer (5V) for audible alerts.
+2. **The system SHALL** include a Passive Buzzer (3.3V, 9056-TS) for audible alerts.
 3. **The system SHALL** include a Vibration Motor (Coin Type) for haptic feedback.
-4. **The system SHALL** include a Status LED (RGB) for visual indicators.
+4. **The system SHALL** include a Status LED (Blue, 5mm, 1.8-2V forward voltage) for visual indicators.
 5. **The system SHALL** include 4x Tactile Buttons (MENU, SOS, UP, DOWN) and 1x Slide Switch (2-Position: ON/OFF).
 
 #### REQ-HW-03: Physical Enclosure
@@ -309,11 +309,12 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED, MPU6050).
 4. **MPU6050 INT:** → GPIO 34 (Input Only, for wake detection).
 5. **TP5100 CHRG Status:** → GPIO 35 (Input Only).
-6. **MOSFET Gate Control:** → GPIO 13.
-7. **Buzzer:** → GPIO 12.
-8. **Vibrator:** → GPIO 15.
-9. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 26, BTN_UP → GPIO 32, BTN_DOWN → GPIO 33.
-10. **Slide Switch:** SW_SLIDE → GPIO 4.
+6. **GPS P-MOSFET Gate Control:** → GPIO 13 (via S8050-D gate driver transistor).
+7. **OLED GND Switch Control:** → GPIO 23 (S8050-D NPN for low-side switching, Silent Mode).
+8. **Buzzer:** → GPIO 12.
+9. **Vibrator:** → GPIO 15.
+10. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 26, BTN_UP → GPIO 32, BTN_DOWN → GPIO 33.
+11. **Slide Switch:** SW_SLIDE → GPIO 4.
 
 ---
 

@@ -1,8 +1,8 @@
 # TrekLink MVP Implementation Plan
 
 > **Project Code:** EXE101-G1-TREKLINK  
-> **Version:** 1.2  
-> **Date:** January 28, 2026
+> **Version:** 1.3  
+> **Date:** February 2, 2026
 
 ---
 
@@ -14,7 +14,7 @@
   - Create `platformio.ini` with ESP32 configuration
   - Set up `src/`, `include/`, `lib/`, `test/` directories
   - Configure build flags for C++17
-  - Add initial library dependencies (Adafruit_SSD1306, TinyGPSPlus, MPU6050_light, RTClib)
+  - Add initial library dependencies (Adafruit_SSD1306, TinyGPSPlus, MPU6050_light)
   - _Requirements: REQ-ENV-01, REQ-ENV-02_
 
 - [ ] 1.1 Create Wokwi simulation configuration
@@ -27,13 +27,14 @@
   - Create `include/hardware_config.h` with all GPIO pin definitions
   - Define LoRa pins (TX:17, RX:16, AUX:27, M0:18, M1:19)
   - Define sensor pins (I2C SDA:21, SCL:22, MPU_INT:34)
-  - Define UI pins (buttons, buzzer:12, vibrator:15, MOSFET:13)
+  - Define UI pins (buttons, buzzer:12, vibrator:15, GPS_MOSFET:13, OLED_GND:23)
   - _Requirements: REQ-HW-04_
 
 - [ ] 3. Implement Power Gating driver
   - Create `src/hal/power_gate.cpp` and `include/hal/power_gate.h`
-  - Implement MOSFET control via GPIO 13
-  - Add functions: `enablePeripherals()`, `disablePeripherals()`, `enableGPS()`, `disableGPS()`
+  - Implement GPS P-MOSFET control via GPIO 13 (high-side switching via S8050-D gate driver)
+  - Implement OLED NPN control via GPIO 23 (low-side GND switching for Silent Mode)
+  - Add functions: `enableGPS()`, `disableGPS()`, `enableOLED()`, `disableOLED()`
   - Test power gating logic with LED indicator
   - _Requirements: REQ-PWR-03.1, REQ-PWR-03.2, REQ-PWR-03.3_
 
@@ -161,10 +162,16 @@
   - _Requirements: REQ-PWR-02.1_
 
 - [ ] 14.2 Implement Silent Mode
-  - Add `enterSilentMode()` to disable OLED, LED, Buzzer
+  - Add `enterSilentMode()` to disable OLED (GPIO 23 LOW), LED, Buzzer
   - Keep vibrator active for haptic feedback
   - Implement toggle on MENU hold (1s)
   - _Requirements: REQ-SEC-04.1, REQ-SEC-04.2, REQ-SEC-04.3, REQ-SEC-04.4_
+
+- [ ] 14.2.1 Implement Silent Mode button suppression
+  - Prevent OLED wake on button press during Silent Mode
+  - Route button events to handlers without display activation
+  - Suppress visual feedback while maintaining haptic-only alerts
+  - _Requirements: REQ-SEC-04.3_
 
 - [ ] 15. Implement Adaptive Power Control (APC)
   - Add RSSI monitoring and power level negotiation
@@ -275,9 +282,16 @@
   - Save changes to NVS on confirmation
   - _Requirements: REQ-UI-03.1_
 
+- [ ] 20.4 Implement Map & Coord menu integration
+  - Add "Map & Coord" submenu with options: "Dot Matrix Map" and "Raw GPS Data"
+  - Link Dot Matrix Map option to existing Map screen (Task 19.2)
+  - Implement Raw GPS Data viewer displaying Lat/Lon in decimal degrees, altitude, HDOP
+  - Show GPS fix status (2D/3D/None) and satellite count
+  - _Requirements: REQ-UI-03.1_
+
 - [ ] 21. Implement Audio/Haptic feedback
   - Create `src/ui/feedback.cpp` and `include/ui/feedback.h`
-  - Implement buzzer patterns: beep, alarm, SOS pattern
+  - Implement passive buzzer PWM patterns (GPIO 12): beep, alarm, SOS pattern
   - Implement vibration patterns: short pulse, long pulse, pattern
   - Respect Silent Mode (disable buzzer, keep vibration)
   - _Requirements: REQ-HW-02.2, REQ-HW-02.3, REQ-SEC-04.2_
@@ -366,6 +380,7 @@ graph TD
     T3 --> T14[14. Power Service]
     T14 --> T14_1[14.1 Deep Sleep]
     T14 --> T14_2[14.2 Silent Mode]
+    T14_2 --> T14_2_1[14.2.1 Button Suppression]
     T14 --> T15[15. Adaptive Power]
     T14 --> T16[16. Battery Monitoring]
     
@@ -384,6 +399,8 @@ graph TD
     T20 --> T20_1[20.1 Send Message]
     T20 --> T20_2[20.2 Logs Viewer]
     T20 --> T20_3[20.3 Settings]
+    T20 --> T20_4[20.4 Map & Coord Menu]
+    T19_2 --> T20_4
     T19 --> T21[21. Audio/Haptic]
     
     T9 --> T22[22. Main App]

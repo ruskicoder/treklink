@@ -97,11 +97,12 @@ graph TD
         BAT --> BUCK[Mini360 Buck<br/>3.3V/5V]
         BUCK --> ESP32_VCC[ESP32 VCC]
         BAT --> RAIL_LORA[LoRa VCC<br/>Always On]
-        BAT --> RAIL_GPS_BCKP[GPS V_BCKP<br/>Always On - Hot Start]
+
         BAT --> RAIL_IMU[MPU6050 VCC<br/>Always On - Low Power Mode]
-        BAT --> MOSFET_GATE[AO3401 P-MOSFET<br/>High-Side Switch]
-        MOSFET_GATE --> GPS_MAIN_VCC[GPS Main VCC]
-        MOSFET_GATE --> OLED_VCC[OLED VCC]
+        BAT --> MOSFET_GPS[IRF9530N P-MOSFET<br/>High-Side GPS Power Gate]
+        MOSFET_GPS --> GPS_MAIN_VCC[GPS Main VCC]
+        BUCK --> OLED_VCC_RAIL[OLED VCC Rail]
+        OLED_VCC_RAIL --> NPN_OLED[S8050-D NPN<br/>Low-Side OLED GND Switch]
     end
 
     subgraph MCU_ESP32["ESP32-WROOM-32"]
@@ -112,37 +113,71 @@ graph TD
         ESP32 -- I2C --> IMU[MPU6050<br/>Accelerometer/Gyro]
         ESP32 -- GPIO --> BTN[Buttons x4]
         ESP32 -- GPIO --> SW[Slide Switch]
-        ESP32 -- GPIO 13 --> MOSFET_CTRL[MOSFET Gate Control]
+        ESP32 -- GPIO 13 --> GPS_MOSFET_CTRL[GPS P-MOSFET Gate Control<br/>via S8050-D Driver]
+        ESP32 -- GPIO 23 --> OLED_GND_CTRL[OLED NPN GND Control]
         ESP32 -- GPIO 27 RTC_GPIO <-- LORA_AUX[LoRa AUX<br/>Wake Interrupt]
         ESP32 -- GPIO 34 RTC_GPIO <-- IMU_INT[MPU6050 INT<br/>Wake Detection]
-        ESP32 -- GPIO 12 --> BUZZER_OUT[Buzzer 5V]
+        ESP32 -- GPIO 12 --> BUZZER_OUT[Buzzer 3.3V PWM]
         ESP32 -- GPIO 15 --> VIBRATE_OUT[Vibrator]
     end
 ```
 
-### 3.2 Pinout Specification
+### 3.2 Complete Pinout Specification
 
-| Component | Signal | GPIO | Notes |
-|-----------|--------|------|-------|
-| **LoRa (E32)** | TX | GPIO 17 | ESP32 RX |
-| | RX | GPIO 16 | ESP32 TX |
-| | AUX | GPIO 27 | RTC_GPIO (Wake interrupt) |
-| | M0 | GPIO 18 | Mode control |
-| | M1 | GPIO 19 | Mode control |
-| **GPS (Neo-6M)** | TX | GPIO 14 | ESP32 RX (UART2) |
-| | V_BCKP | V_BAT | Direct connection for Hot Start |
-| **I2C Bus** | SDA | GPIO 21 | Shared: OLED, MPU6050 |
-| | SCL | GPIO 22 | Shared: OLED, MPU6050 |
-| **MPU6050** | INT | GPIO 34 | Input Only (Fall detection wake) |
-| **TP5100** | CHRG | GPIO 35 | Input Only (LOW = Charging) |
-| **Power** | MOSFET Gate | GPIO 13 | Via NPN transistor |
-| **Audio/Haptic** | Buzzer | GPIO 12 | Active Buzzer 5V |
-| | Vibrator | GPIO 15 | Coin motor |
-| **Buttons** | MENU | GPIO 25 | Side button |
-| | SOS | GPIO 26 | Front, red bar |
-| | UP | GPIO 32 | Navigation |
-| | DOWN | GPIO 33 | Navigation |
-| **Switch** | SLIDE | GPIO 4 | Power ON/OFF |
+| Board Label | GPIO | Pin Function | Module/Signal | Connection | Notes |
+|-------------|------|--------------|---------------|------------|-------|
+| **Power Rails** | | | | | |
+| 3V3 (R) | - | 3.3V Output | Power | Mini360 Buck Output | Main 3.3V rail |
+| GND (R/L) | - | Ground | Power | Common GND | Multiple GND pins |
+| VIN (L) | - | 5V Input | Power | USB/TP5100 | Programming only |
+| **LoRa E32-433T20D** | | | | | |
+| - | - | VCC | LoRa E32 | 3.3V rail | **NOT 5V!** |
+| - | - | GND | LoRa E32 | Common GND | |
+| TX2 (R) | GPIO 17 | UART2 TX | LoRa E32 RXD | ESP32 TX → E32 RX | |
+| RX2 (R) | GPIO 16 | UART2 RX | LoRa E32 TXD | E32 TX → ESP32 RX | |
+| D27 (L) | GPIO 27 | ADC2_CH7, Touch7, RTC_GPIO17 | LoRa E32 AUX | Wake interrupt | Deep sleep wake |
+| D18 (R) | GPIO 18 | VSPI_SCK | LoRa E32 M0 | Mode control | |
+| D19 (R) | GPIO 19 | VSPI_MISO | LoRa E32 M1 | Mode control | |
+| **GPS Neo-6M** | | | | | |
+| - | - | VCC | GPS Neo-6M | MOSFET Drain (3.3V gated) | Power gated via D13 |
+| - | - | GND | GPS Neo-6M | Common GND | |
+| D14 (L) | GPIO 14 | HSPI_CLK, ADC2_CH6, Touch6 | GPS TX | ESP32 RX | NMEA data input |
+| - | - | RX | GPS Neo-6M | Not connected | Read-only (no config) |
+| **I2C Bus (Shared)** | | | | | |
+| D21 (R) | GPIO 21 | **I2C SDA** | I2C Bus | SDA + 4.7kΩ pull-up | OLED + MPU6050 |
+| D22 (R) | GPIO 22 | **I2C SCL** | I2C Bus | SCL + 4.7kΩ pull-up | OLED + MPU6050 |
+| **MPU6050 IMU** | | | | | |
+| - | - | VCC | MPU6050 | 3.3V rail (always-on) | Low power ~20µA |
+| - | - | GND | MPU6050 | Common GND | |
+| D21 (R) | GPIO 21 | I2C SDA | MPU6050 SDA | Via I2C bus | Shared with OLED |
+| D22 (R) | GPIO 22 | I2C SCL | MPU6050 SCL | Via I2C bus | Shared with OLED |
+| D34 (L) | GPIO 34 | ADC1_CH6, **Input Only** | MPU6050 INT | Fall detection wake | RTC_GPIO, input only |
+| - | - | AD0 | MPU6050 | GND | I2C addr 0x68 |
+| **OLED SSD1306** | | | | | |
+| - | - | VCC | OLED | 3.3V rail (always-on) | Always powered |
+| - | - | GND | OLED | NPN switched via D23 | Silent mode switch |
+| D21 (R) | GPIO 21 | I2C SDA | OLED SDA | Via I2C bus | Shared with MPU6050 |
+| D22 (R) | GPIO 22 | I2C SCL | OLED SCL | Via I2C bus | Shared with MPU6050 |
+| **Power & Control** | | | | | |
+| D35 (L) | GPIO 35 | ADC1_CH7, **Input Only** | TP5100 CHRG | Charging status | LOW = charging |
+| D13 (L) | GPIO 13 | HSPI_MOSI, ADC2_CH4, Touch4 | GPS MOSFET | GPS power gate | Via NPN driver |
+| D23 (R) | GPIO 23 | VSPI_MOSI | OLED GND | OLED NPN switch | Silent mode |
+| **Audio & Haptic** | | | | | |
+| D12 (L) | GPIO 12 | HSPI_MISO, ADC2_CH5, Touch5 | Passive Buzzer | PWM tone (3.3V) | Audio feedback |
+| D15 (R) | GPIO 15 | HSPI_CS, ADC2_CH3, Touch3 | Vibration Motor | Motor via NPN | Haptic feedback |
+| **User Interface** | | | | | |
+| D25 (L) | GPIO 25 | DAC1, ADC2_CH8, RTC_GPIO6 | MENU Button | Menu/Back, Hold: Silent | 10kΩ pull-down |
+| D26 (L) | GPIO 26 | DAC2, ADC2_CH9, RTC_GPIO7 | SOS Button | Click: Ping, Hold 3s: SOS | 10kΩ pull-down |
+| D32 (L) | GPIO 32 | ADC1_CH4, Touch9, RTC_GPIO9 | UP Button | Navigation | 10kΩ pull-down |
+| D33 (L) | GPIO 33 | ADC1_CH5, Touch8, RTC_GPIO8 | DOWN Button | Navigation | 10kΩ pull-down |
+| D4 (R) | GPIO 4 | ADC2_CH0, Touch0, RTC_GPIO10 | Slide Switch | Power ON/OFF | 10kΩ pull-down |
+
+**Notes:**
+- **(L)** = Left side, **(R)** = Right side (USB port facing down)
+- **Input Only** pins (34, 35, 36, 39) cannot output
+- **RTC_GPIO** pins wake ESP32 from deep sleep
+- **I2C shared bus** - OLED (0x3C) + MPU6050 (0x68) on same SDA/SCL
+- TX0/RX0 (GPIO 1/3) reserved for USB programming - DO NOT USE
 
 ### 3.3 Power Gating Circuit
 
@@ -172,9 +207,10 @@ Battery (+4.2V)
 
 ### 3.4 GPS Hot Start Strategy
 
-- **V_BCKP** connected directly to battery (always powered)
-- **Main VCC** controlled via MOSFET (power gated)
-- **Result**: GPS module retains satellite almanac data during sleep, achieving <1 second Time-to-First-Fix (TTFF) on wake
+- **Built-in coin battery**: Neo-6M module includes internal backup battery (CR1220 or similar) that maintains RTC and almanac data when main VCC is power-gated
+- **Main VCC**: Controlled via P-MOSFET (GPIO 13 gate control) - completely powered off during deep sleep
+- **Result**: GPS retains satellite almanac data via internal battery, achieving <1 second Time-to-First-Fix (TTFF) when VCC re-enabled
+- **No external wiring**: V_BCKP pin not available on Neo-6M breakout modules
 
 ### 3.5 IMU Power Strategy
 
@@ -221,28 +257,29 @@ Mini360 OUT- ───────────> Common GND
 
 **ESP32 30-pin DevKit V1 Module to Breadboard:**
 
-| ESP32 Pin | Module | Signal | Wire Color (suggestion) |
-|-----------|--------|--------|------------------------|
-| **3.3V** | Power | Power rail | Red |
-| **GND** | Power | Ground rail | Black |
-| **GPIO 17** | LoRa E32 | TX (ESP32 TX2) | Orange |
-| **GPIO 16** | LoRa E32 | RX (ESP32 RX2) | Yellow |
-| **GPIO 27** | LoRa E32 | AUX (Wake interrupt) | Purple |
-| **GPIO 18** | LoRa E32 | M0 (Mode control) | Blue |
-| **GPIO 19** | LoRa E32 | M1 (Mode control) | Green |
-| **GPIO 14** | Neo-6M GPS | TX (ESP32 RX) | Brown |
-| **GPIO 21** | I2C Bus | SDA | White |
-| **GPIO 22** | I2C Bus | SCL | Gray |
-| **GPIO 34** | MPU6050 | INT (Input Only) | Light Blue |
-| **GPIO 35** | TP5100 | CHRG Status (Input Only) | Pink |
-| **GPIO 13** | MOSFET Gate | Control (via NPN transistor) | Violet |
-| **GPIO 12** | Buzzer | Active buzzer control | Cyan |
-| **GPIO 15** | Vibrator | Motor control (via 2N2222) | Magenta |
-| **GPIO 25** | Button | MENU button | Dark Blue |
-| **GPIO 26** | Button | SOS button | Dark Red |
-| **GPIO 32** | Button | UP button | Dark Green |
-| **GPIO 33** | Button | DOWN button | Dark Yellow |
-| **GPIO 4** | Switch | SLIDE ON/OFF | Dark Orange |
+| Physical Pin | GPIO | Module | Signal | Wire Color (suggestion) |
+|--------------|------|--------|--------|------------------------|
+| **3V3** (Right, top) | - | Power | 3.3V Power rail | Red |
+| **GND** (multiple) | - | Power | Ground rail | Black |
+| **TX2** (Right) | GPIO 17 | LoRa E32 | TX (ESP32 TX2) | Orange |
+| **RX2** (Right) | GPIO 16 | LoRa E32 | RX (ESP32 RX2) | Yellow |
+| **D27** (Left) | GPIO 27 | LoRa E32 | AUX (Wake interrupt, RTC_GPIO) | Purple |
+| **D18** (Right) | GPIO 18 | LoRa E32 | M0 (Mode control) | Blue |
+| **D19** (Right) | GPIO 19 | LoRa E32 | M1 (Mode control) | Green |
+| **D14** (Left) | GPIO 14 | Neo-6M GPS | TX (ESP32 RX) | Brown |
+| **D21** (Right) | GPIO 21 | I2C Bus | SDA | White |
+| **D22** (Right) | GPIO 22 | I2C Bus | SCL | Gray |
+| **D34** (Left) | GPIO 34 | MPU6050 | INT (Input Only, RTC_GPIO) | Light Blue |
+| **D35** (Left) | GPIO 35 | TP5100 | CHRG Status (Input Only) | Pink |
+| **D13** (Left) | GPIO 13 | GPS P-MOSFET | Gate control via S8050-D driver | Violet |
+| **D23** (Right) | GPIO 23 | OLED Switch | NPN GND control (Silent Mode) | Light Green |
+| **D12** (Left) | GPIO 12 | Buzzer | Passive buzzer PWM control | Cyan |
+| **D15** (Right) | GPIO 15 | Vibrator | Motor control via S8050-D | Magenta |
+| **D25** (Left) | GPIO 25 | Button | MENU button | Dark Blue |
+| **D26** (Left) | GPIO 26 | Button | SOS button | Dark Red |
+| **D32** (Left) | GPIO 32 | Button | UP button | Dark Green |
+| **D33** (Left) | GPIO 33 | Button | DOWN button | Dark Yellow |
+| **D4** (Right) | GPIO 4 | Switch | SLIDE ON/OFF | Dark Orange |
 
 #### 3.6.3 LoRa E32 Module Wiring
 
@@ -292,9 +329,10 @@ ESP32 GPIO 22 (SCL) ───[4.7kΩ to 3.3V]───┬───> OLED SCL
 | VCC | MOSFET Drain (power gated) | 3.3V when enabled |
 | GND | GND rail | |
 | TX | ESP32 GPIO 14 (RX) | NMEA data output |
-| RX | Not connected | No commands needed for MVP |
-| V_BCKP | Battery (+) | **Direct to battery for hot start!** |
+| RX | Not connected | Read-only (no config needed) |
 | PPS | Not connected | Pulse-per-second (optional) |
+
+**Note**: V_BCKP not shown - Neo-6M module has built-in coin battery for hot start
 
 **GPS Antenna:**
 - 25mm square ceramic patch with IPEX connector
@@ -303,50 +341,109 @@ ESP32 GPIO 22 (SCL) ───[4.7kΩ to 3.3V]───┬───> OLED SCL
 
 #### 3.6.6 Power Gating Circuit (Breadboard Assembly)
 
+**Component Pin Identification:**
 
-**For GPS Power Gating (using IRF9530N TO-220 P-MOSFET + S8050-D):**
+**IRF9530N P-MOSFET (TO-220 Package):**
+```
+   Looking at component with TEXT SIDE facing you, pins pointing DOWN:
+   
+    ┌─────────────┐
+    │  IRF9530N   │  ← Text side facing you
+    │             │
+    └─────────────┘
+     │     │     │
+    [G]   [D]   [S]  ← Pins pointing DOWN
+    
+   Left pin   = GATE (G)
+   Center pin = DRAIN (D)
+   Right pin  = SOURCE (S)
+```
+
+**S8050-D NPN Transistor (TO-92 Package):**
+```
+   Looking at component with FLAT SIDE facing you, pins pointing DOWN:
+   
+    ┌─────────────┐
+    │  ___        │  ← Flat side facing you
+    │    │        │
+    └────┴────────┘
+     │     │     │
+    [E]   [B]   [C]  ← Pins pointing DOWN
+    
+   Left pin   = EMITTER (E)
+   Center pin = BASE (B)  
+   Right pin  = COLLECTOR (C)
+```
+
+---
+
+**GPS Power Gating Circuit (High-Side P-MOSFET):**
 
 ```
 Battery (+4.2V)
     │
-    ├─── IRF9530N [Source Pin] (Right pin, facing flat side)
-    │           │
-    │       [Drain Pin] (Center) ──> Neo-6M VCC
-    │           │
-    │       [Gate Pin] (Left)
-    │           │
-    │       [10kΩ] Pull-up to Battery (+)
-    │           │
-    └───[1kΩ]───┤
+    ├─── IRF9530N SOURCE (Right pin) ───┐
+    │                                    │
+    │    IRF9530N DRAIN (Center pin) ───┼──→ Neo-6M VCC (3.3V when ON)
+    │                                    │
+    │    IRF9530N GATE (Left pin)       │
+    │           │                        │
+    │       [10kΩ resistor to Battery +]│
+    │           │                        │
+    └───[1kΩ]───┤                       │
+                │                        │
+           S8050-D COLLECTOR (Right pin)│
+                │                        │
+           S8050-D EMITTER (Left pin)───┴──→ GND
                 │
-           S8050-D [Collector]
-                │
-           [Emitter] ──> GND
-                │
-           [Base] ──[1kΩ]──> ESP32 GPIO 13
+           S8050-D BASE (Center pin) ──[1kΩ]──→ ESP32 D13 (GPIO 13)
 
-When GPIO 13 = HIGH: NPN ON → Gate LOW → MOSFET ON → GPS powered
-When GPIO 13 = LOW:  NPN OFF → Gate HIGH (via 10k pull-up) → MOSFET OFF → GPS unpowered
+Logic:
+• D13 = HIGH → NPN ON → Gate pulled LOW → P-MOSFET ON → GPS powered
+• D13 = LOW  → NPN OFF → Gate pulled HIGH (10kΩ) → P-MOSFET OFF → GPS unpowered
 ```
 
-**For OLED Low-Side Switching (Silent Mode Support):**
+---
 
-OLED VCC always connected to 3.3V, GND switched via S8050-D:
+**OLED GND Switching Circuit (Low-Side NPN):**
 
 ```
-OLED GND ──> S8050-D [Collector]
-                │
-           [Emitter] ──> GND
-                │
-           [Base] ──[1kΩ]──> ESP32 GPIO 23
+OLED VCC ──→ 3.3V (always connected)
 
-When GPIO 23 = HIGH: NPN ON → OLED GND connected → Display ON
-When GPIO 23 = LOW:  NPN OFF → OLED GND disconnected → Display OFF
+OLED GND ──→ S8050-D COLLECTOR (Right pin)
+                 │
+            S8050-D EMITTER (Left pin) ──→ GND
+                 │
+            S8050-D BASE (Center pin) ──[1kΩ]──→ ESP32 D23 (GPIO 23)
+
+Logic:
+• D23 = HIGH → NPN ON → OLED GND connected → Display ON
+• D23 = LOW  → NPN OFF → OLED GND floating → Display OFF (Silent Mode)
 ```
+
+---
+
+**Breadboard Wiring Steps:**
+
+1. **GPS P-MOSFET Circuit:**
+   - Insert IRF9530N into breadboard (text facing you)
+   - Connect RIGHT pin (Source) to Battery + rail
+   - Connect CENTER pin (Drain) to Neo-6M VCC
+   - Connect LEFT pin (Gate) to 10kΩ resistor going to Battery +
+   - Insert S8050-D (flat side facing you)
+   - Connect S8050-D RIGHT pin (Collector) to IRF9530N Gate (via 1kΩ)
+   - Connect S8050-D LEFT pin (Emitter) to GND
+   - Connect S8050-D CENTER pin (Base) to ESP32 D13 (via 1kΩ)
+
+2. **OLED NPN Switch:**
+   - Insert S8050-D into breadboard (flat side facing you)
+   - Connect RIGHT pin (Collector) to OLED GND
+   - Connect LEFT pin (Emitter) to GND rail
+   - Connect CENTER pin (Base) to ESP32 D23 (via 1kΩ)
 
 **Silent Mode Logic:**
-- GPS stays ON (GPIO 13 = HIGH)
-- OLED turns OFF (GPIO 23 = LOW)
+- GPS stays ON (D13 = HIGH)
+- OLED turns OFF (D23 = LOW)
 - Only vibration motor provides haptic feedback
 
 
