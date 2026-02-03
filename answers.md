@@ -1,20 +1,77 @@
 [This file will change depending on the questions asked by the AI agent. It is temporary and should be only used for immediate answers]
 
-Before reading the answers, sum up the development BOM, including the mosfets, and such. for this phase i need through hole components only for rapid testing in breadboards and perfboards. For SMD components, i will use JLCPCB and ThegioiIC's fab PCB manufacture services for fallback or if the timeframe is short.
+1. I am replacing the E32 with the Ra-02 completely.
+2. for Ra-02 allocation, use the Meshtastic defaults with our custom:
 
-1. I am planning to prototype using breadboard first then pcb. I do want a detailed schematic showing which exact wire connects where. Then i will brainstorm which actual schematic & components needed for pcb design (moving from prebuilt modules like TP5100 or mini 360 into a simpler but much more robust pcb designs onto the pcb). 
-2. Enclosure is actually 125x80x32mm, this is the plastic enclosure dimensions. The actual internal space is smaller around 120x74x28mm. Please update specs first. For the PCB phase (later on), i could make a singular PCB that can be a motherboard for soldering the prebuilt modules such as Lora, onto the pcb itself to make a compact unit. For actual PCB size will be exactly 70x70mm (maximum size alotted by the enclosure). For prototype, it should be perfboard friendly within the size limit (maximum perfboard size premanufactured), and perfboards can be stacked or mounted vertically (suppose only within the 28mm allocation space). so the developing is: breadboard (outside enclosure), perfboard (inside enclosure), then PCB (inside enclosure). For fab in later stages, either use 70x70mm pcb or panelization of 1 70x70mm pcb from a 100x100mm pcb.
-3. I will use JLCPCB and the SMD pre-solder services. I will also use ThegioiIC's fab PCB manufacture services for fallback or if the timeframe is short. For the first stage of development, i will primarily use breadboard and perfboard. PCB standards should be 2 layer, FR4.
-4. For MVP, for fitting into the enclosure itself, i must use perfboards, that i will solder the prebuilt modules such as Lora, onto the perfboard itself using its sockets for compactness. We will use modular method.
-5. GPS antenna for the Neo6M comes with a IPEX connector with it are a 25mm square ceramic antenna with 30mm of wire length with IPEX connector also. Max distance 30mm from the Neo6M module.
-Lora antenna is 17.5cm. i tend to place it at right side of the enclosure, as seen on the treklink-concept.png. The module itself has an SMA jack already, and i already bought a SMA to SMA cable to connect it to the antenna.
-6. For prototyping, i will use breadboard , and for ease of use i will use battery holders. When its enclosure phase where i need to put things into box for fit, if battery holder is not fit, i will spot weld battery for compactness, since they are 1s batteries anyways so it wouldn't be much of an issue.
-The TP5100 is a module with IN+ - and OUT + - pins with potentiometers built-in. 
-I already have BMS for the 1s batteries. it is easy to implement, so i do not include it to BOM.
-7. USB c position, actually, is on the right side of the enclosure, as NOT seen on the treklink-concept.png note that the concept image is for CONCEPT only, not final product. 
-Test points will be used only in development phase. But test points in final PCB are a plus.
-the USB serial should be a different connector, not even on the ESP32, but a separate soldered module for repairability. it should locate on the left side of the enclosure on the final product.
-for pogo pins requirements, i dont have any, as the ESP32 itself has pogo pins, so for development phase i will use breadboard, jumper wires. in perfboard, i will soldier the modules to the perfboard itself and bridge by jumper wires.
-8. The final PCB is as this: A complete, single PCB includes every modules, including buttons. the buttons will have a high height (about 8mm-12mm depending on final design) that is somewhat almost touching the top of the enclosure, that which will be where the hole is drilled, and attached buttons on it. The PCB will be mounted on the bottom of the enclosure with either adhesive (for quick prototype/mass production for ease) or screws (premium or showcase product). The OLED is mounted on the PCB via its pogo pins.
-9. For prototyping, no, i do not need ground plane. The specific concept layout is in concept-layout.png. The power gating mosfets in the final PCB version should be near the battery to prevent interference with logical modules.
-10. I did not clear of your question. Clarify your intent. For separate ground planes, i have not decided, evaluate this. decoupling capacitors i intent to place at power hungry modules like lora, esp32, or neo6m.
+#pragma once
+
+// LoRa SPI (Ra-02 / SX1278)
+#define LORA_SCK 14
+#define LORA_MISO 12
+#define LORA_MOSI 13
+#define LORA_CS 15
+#define LORA_DIO0 26 // Required for SX127x
+#define LORA_RESET 32
+
+// I2C Peripherals (OLED & MPU6050)
+#define SDA 21
+#define SCL 22
+
+// Hardware Silent Mode (OLED GND Switch)
+#define PIN_OLED_GND_EN 23 
+
+// GPS (Neo-6M)
+#define GPS_RX 16
+#define GPS_TX 17
+
+// User Interface
+#define BUTTON_PIN_MENU 25
+#define BUTTON_PIN_UP 27
+#define BUTTON_PIN_DOWN 35 // Input only
+#define BUTTON_PIN_SOS 34  // Input only
+
+// Notifications
+#define PIN_BUZZER 4
+#define PIN_VIBRATOR 2
+#define PIN_LED 5
+
+// Battery Sensing
+#define BATTERY_PIN 32 // ADC channel
+
+note this only proposed, because lack of actual knowledge of which default pin the meshtastic firmware is using. 
+
+
+3. Ra-02 ready to run! returned the E32 module already. The Ra-02 is a pinout version ready for breadboard testing with DIO0 pre-exposed. it also have a through-hole unsoldered rail if we want to expand to 1,2,3.
+4. we will reuse the antenna. i already purchased the connector for it. 
+5. antenna should be remained mounted on the right side of the device, as per original specs.
+6. our power gating circuit will be remained, though allocate different pins for those.
+7. use per original meshtastic firmware or custom
+8. I am okay with higher idle current, though we will reuse meshtastic's sleep mode.
+9. if possible use hybrid option to still use Meshtastic radio layer while custom packets of our own for lightness & security. This means that traditional messages would not be visible to other meshtastic users, but in the event of SOS, or public broadcast, we will disable our custom packet layer and use the meshtastic radio layer and transmit public broadcast messages. So it will be a hybrid of both.
+10. for encryption, we will use both: PKC at the bottom, our AES 128 GCM & channel ID layer on top, for private "TrekLink" devices only; public, broadcast messages including SOS will only use meshtastic's protocol.
+11. we will not use the header obfuscation of our own anymore, use meshtastic's instead. Instead we will encrypt the payload only.
+12. Because in development, nodes cannot communicate with each other due to mismatch of boot time, and unable to generate equal hopping, for MVP, sadly we will disable the hopping feature. 
+13. we will use meshtastic's improving routing algorithm.
+14. For interoperability, we will implement modes: 
+    - Public Broadcast, universal to all Meshtastic devices (use conventional meshtastic protocols only)
+    - Private Broadcast, Treklink devices only (use our own custom protocol + encryption)
+    - SOS, universal to all Meshtastic devices (use conventional meshtastic protocols only)
+15. We will implement local only, and all rebroadcast modes are within the Treklink protocol only. this means that there are 3 separate mode of rebroadcast: Treklink local, Treklink public, and Meshtastic public. As mentioned, the Treklink protocols will use our AES 128 GCM & channel ID layer on top with channel IDs for teams, public Treklink will still use our proprietary protocol + encryption but public to only TrekLink devices only (this is important, in this mode Meshtastic devices cannot decipher our own custom protocol), and only in Meshtastic public mode do we use conventional meshtastic protocols.
+16. I do not know, it depends on the default pinouts of the original meshtastic firmware or custom
+17. We will use Meshtastic GPS service + navigation UI.
+18. We will keep fall detection as a separate service that always runs when on, and will trigger Meshtastic SOS when detected and user not respond in under 30s.
+19. Option C.
+20. Yes, we will custom implementation.
+21. Hardware level power gating + only need a single additional GPIO for signal to the mosfets.
+22. use meshtastic battery telemetry.
+23. Option A for best customizability.
+24. use meshtastic's OTA feature, but our OWN OTA service. (because our device supports custom proprietary features regular meshtastic devices dont have)
+25. features are MUST-HAVE for the fork to be viable:
+ Working Ra-02 433MHz SPI radio, fall detection, and working device, other are NOT optional but if the developmet window is too short that ended prematurely, a working fork of meshtastic (no need our custom protocol whatsoever) is still viable.
+26. 2.6.x for latest stable release for support of 433mhz ESP32 devkit + Ra-02
+27. Yes, please but do mind other GPIOs, or use my proposal, or use meshtastic's defualt, any, as long as all modules are plugged in the ESP32 and our code can work flawlessly with each of the modules.
+28. Yes i have and we will:
+ Ra-02 modules already available for testing
+ Start from scratch with new hardware
+29. Primary reason is to use existing meshtastic UI, mesh protocol, phone connect support, and GPS service. Secondary reason is to use existing meshtastic phone app. NOTE: a BIG IF here, if we cannot managed to pull our custom protocols in the timeframe, WE MUST PRIORITIZE our device as a generic Meshtastic compatible mesh device. Which means first phases of development is to get our device to work as a generic Meshtastic compatible mesh device, and then we will implement our custom protocols on top of it. This is a BIG IF, and we will need to reevaluate our strategy if this is not possible or not done under the timeframe we will SKIP our own implementation (no power gating, no sleep mode, keep custom buttons, but NO FALL DETECTION).
+

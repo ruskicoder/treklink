@@ -80,10 +80,15 @@ public:
      */
     void clearEvent(ButtonID btn);
 
+    // ========== Diagnostic Functions ==========
+    
+    #ifdef DEBUG
     /**
-     * Print button states to Serial (for debugging)
+     * Print button states to Serial
+     * For debugging and verification
      */
     void printStatus();
+    #endif
 
 private:
     ButtonState buttons[BTN_COUNT];  // State for all buttons

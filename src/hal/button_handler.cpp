@@ -14,7 +14,7 @@ void ButtonHandler::begin() {
     buttons[BTN_ID_DOWN].pin = BTN_DOWN_PIN;
 
     for (int i = 0; i < BTN_COUNT; i++) {
-        pinMode(buttons[i].pin, INPUT_PULLDOWN);
+        pinMode(buttons[i].pin, INPUT_PULLUP);  // Changed to PULLUP for active-LOW
         buttons[i].currentState = BTN_RELEASED;
         buttons[i].lastState = BTN_RELEASED;
         buttons[i].lastDebounceTime = 0;
@@ -24,12 +24,6 @@ void ButtonHandler::begin() {
         buttons[i].clickTime = 0;
         events[i] = BTN_NONE;
     }
-
-    Serial.println("[ButtonHandler] Initialized");
-    Serial.println("  Button config: Active LOW with pull-down");
-    Serial.println("  Debounce: 50ms");
-    Serial.println("  Double-click window: 300ms");
-    Serial.println("  Hold threshold: 1000ms");
 }
 
 void ButtonHandler::update() {
@@ -132,6 +126,7 @@ void ButtonHandler::clearEvent(ButtonID btn) {
     }
 }
 
+#ifdef DEBUG
 void ButtonHandler::printStatus() {
     Serial.println("\n=== Button Status ===");
     
@@ -148,3 +143,4 @@ void ButtonHandler::printStatus() {
     
     Serial.println("====================\n");
 }
+#endif

@@ -48,39 +48,41 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 #### REQ-COM-01: Managed Flooding Mesh
 **User Story:** As a user, I want my messages to reach their destination even if I don't have a direct line of sight, so that I can communicate reliably in complex terrain.
 
-**Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** utilize a Managed Flooding Mesh algorithm where every node re-broadcasts unique packets exactly once based on Message ID deduplication.
-2. **WHEN** a packet is received for another node, **THEN** the system **SHALL** re-broadcast it immediately if the Hop Count (TTL) is > 0.
-3. **IF** a packet has already been seen (based on Msg ID in Seen_Buffer), **THEN** the system **SHALL** drop the packet to prevent broadcast storms.
-4. **WHILE** the device is ON, **THEN** it **SHALL** listen for incoming LoRa packets according to the defined duty cycle (Wake-on-Radio mode).
-5. **[Ubiquitous]** The system **SHALL** operate as a De-centralized Gossip Protocol; every node **SHALL** act as a peer-router with no "Coordinator" or "Head" node.
+**Acceptance Criteria (Updated for Meshtastic Base):**
+1. **[Ubiquitous]** The system **SHALL** utilize **Meshtastic firmware v2.6.x routing algorithm** (improving managed flooding) as the base mesh protocol.
+2. **WHEN** a packet is received for another node, **THEN** the system **SHALL** re-broadcast according to Meshtastic's routing logic (hop count decrement, seen buffer deduplication).
+3. **IF** a packet has already been seen (based on Message ID in Meshtastic's RecentPackets), **THEN** the system **SHALL** drop the packet to prevent broadcast storms.
+4. **WHILE** the device is ON, **THEN** it **SHALL** listen for incoming LoRa packets using RadioLib's Channel Activity Detection (CAD).
+5. **[Ubiquitous]** The system **SHALL** operate as a decentralized peer-to-peer mesh; every node **SHALL** act as a router with no coordinator node.
+6. **[Phase 2 Optional]** The system **MAY** implement custom TrekLink packet types for private group communication with additional AES-128-GCM encryption layer.
 
 #### REQ-COM-02: Packet Structure & Protocol
 **User Story:** As a developer, I want an optimized packet structure, so that airtime is minimized and battery life is maximized.
 
-**Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** constrain total packet size to <50 Bytes for LoRa airtime optimization.
-2. **WHEN** transmitting a packet, **THEN** the system **SHALL** include: Header (Magic Byte), Config Bitmask, Sender ID, Target ID (0xFF for Broadcast), Msg ID (nonce), Hop Count, Type, GPS Lat/Lon, Telemetry (Battery), Payload, and CRC.
-3. **WHEN** transmitting a message, **THEN** the system **SHALL** perform Forward Error Correction (FEC) using Reed-Solomon encoding to handle packet corruption.
-4. **IF** the payload exceeds the packet limit, **THEN** the system **SHALL** reject the message (MVP does not support fragmentation).
-5. **WHEN** a packet is received with `Link_Score = RSSI + (SNR * Factor)` below the defined threshold, **THEN** the system **SHALL** drop the packet (Link Quality Routing / ETX Logic).
+**Acceptance Criteria (Updated for Meshtastic):**
+1. **[Phase 1]** The system **SHALL** use **Meshtastic Protobuf packet structure** for interoperability with other Meshtastic devices.
+2. **WHEN** transmitting in **Meshtastic Public mode**, ** THEN** the system **SHALL** use standard Meshtastic MeshPacket format (header, from, to, payload, etc.).
+3. **[Phase 2 Optional]** WHEN transmitting in **TrekLink Private mode**, **THEN** the system **MAY** encapsulate custom encrypted payloads within Meshtastic PortNum_PRIVATE_APP packets.
+4. **IF** a payload exceeds maximum packet size, **THEN** the system **SHALL** reject the message (MVP does not support fragmentation).
+5. **WHEN** Link Quality (RSSI/SNR) is below acceptable threshold, **THEN** Meshtastic **SHALL** adjust rebroadcast behavior automatically.
 
 #### REQ-COM-03: Message Types & Priority
 **User Story:** As a user, I want different ways to communicate, so that I can send quick updates or urgent alerts.
 
-**Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** support the following message types: Text (0x01), Ping (0x02), SOS (0x03), and Ack (0x04).
-2. **WHEN** the user selects a predefined message, **THEN** the system **SHALL** broadcast it to the target ID.
-3. **WHEN** an SOS is triggered, **THEN** the system **SHALL** broadcast a high-priority packet containing GPS coordinates to `0xFF` (Broadcast Address) on ALL channels (ignoring channel filters).
-4. **WHEN** a "Matrix Check" is requested (double-click SOS), **THEN** the system **SHALL** broadcast a Location Ping Request and record responses to build a neighbor list for the Map Matrix.
-5. **[Ubiquitous]** SOS messages **SHALL** have the highest priority and **SHALL** override all other packets in the transmission queue.
+**Acceptance Criteria (Updated for Meshtastic + TrekLink Hybrid):**
+1. **[Phase 1]** The system **SHALL** support **Meshtastic standard message types**: Text (PRIVATE), Position (POSITION_APP), and NodeInfo (NODEINFO_APP).
+2. **WHEN** the user triggers SOS, **THEN** the system **SHALL** broadcast a **Meshtastic standard POSITION_APP packet** to ensure interoperability with all Meshtastic devices.
+3. **[Phase 2 Optional]** The system **MAY** support custom TrekLink message types (encrypted private messages, preset broadcasts) using PortNum_PRIVATE_APP.
+4. **WHEN** a "Matrix Check" is requested (double-click SOS), **THEN** the system **SHALL** send position broadcasts and record received NodeInfo to build a neighbor list.
+5. **[Ubiquitous]** SOS messages **SHALL** have highest priority and **SHALL** use Meshtastic's critical message flag.
 
 #### REQ-COM-04: Rebroadcast Modes
 **User Story:** As a Group Leader, I want to control how my device relays messages, so that I can prioritize local group communication or extend network range.
 
-**Acceptance Criteria:**
-1. **WHEN** "Rebroadcast Mode" is set to "Local Only," **THEN** the system **SHALL** only relay packets matching the current Channel ID.
-2. **WHEN** "Rebroadcast Mode" is set to "All," **THEN** the system **SHALL** relay valid packets from any channel to extend network range, but **SHALL NOT** display them in the Received Log.
+**Acceptance Criteria (Updated for Meshtastic + Phase 2):**
+1. **[Phase 1]** The system **SHALL** support Meshtastic's channel-based routing (primary channel for local mesh).
+2. **[Phase 2 Optional]** WHEN "TrekLink Private Mode" is enabled, **THEN** the system **SHALL** only relay packets with matching Channel ID encryption key.
+3. **WHEN** in "Meshtastic Public Mode," **THEN** the system **SHALL** relay all valid Meshtastic packets to extend network range for universal interoperability.
 
 ---
 
@@ -143,21 +145,20 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 #### REQ-SEC-01: Encryption
 **User Story:** As a user, I want my communications to be private, so that eavesdroppers cannot read my messages or track my location.
 
-**Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** perform AES-128-GCM (Galois/Counter Mode) encryption on the ESP32 before data is sent to the E32 UART, ensuring Authenticated Encryption with Associated Data (AEAD).
-2. **[Ubiquitous]** The system **SHALL** utilize the current Channel Value as the seed for both encryption and Frequency Hopping.
-3. **IF** a received packet fails decryption (CRC mismatch after AES decrypt), **THEN** the system **SHALL** discard it silently.
-4. **[Ubiquitous]** The system **SHALL** hash all headers; Target ID and Sender ID **SHALL NOT** be sent in plaintext but **SHALL** be obfuscated using a rotating hash keyed to the current PRFH index to prevent ELINT traffic analysis.
+**Acceptance Criteria (Updated for Meshtastic Hybrid):**
+1. **[Phase 1]** The system **SHALL** use **Meshtastic firmware v2.6.x PKC (Public Key Cryptography)** for channel encryption as the baseline security layer.
+2. **[Phase 2 Optional]** The system **MAY** implement an additional **AES-128-GCM** encryption layer on top of Meshtastic PKC for TrekLink Private mode messages.
+3. **WHEN** in **Meshtastic Public mode** (SOS, universal broadcasts), **THEN** the system **SHALL** use only Meshtastic's standard PKC encryption.
+4. **WHEN** in **TrekLink Private mode**, **THEN** the system **SHALL** use Channel ID as seed for AES-128-GCM encryption before encapsulation in Meshtastic packets.
+5. **IF** a received packet fails decryption, **THEN** the system **SHALL** discard it silently.
 
-#### REQ-SEC-02: Anti-Jamming (Pseudo-Random Frequency Hopping)
+#### REQ-SEC-02: Anti-Jamming (Deferred from MVP)
 **User Story:** As a tactical user, I want communication to persist even if someone tries to jam the frequency.
 
 **Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** implement a Linear Congruential Generator (LCG) using a pre-shared 128-bit key as the seed to generate a hopping sequence across the 32 available E32 channels (410–441 MHz).
-2. **[Ubiquitous]** The system **SHALL NOT** operate on a static frequency; it **SHALL** calculate dynamic frequency offset: `Frequency = Base_Freq + (Channel_ID * Offset_Step)`.
-3. **[Ubiquitous]** The system **SHALL** synchronize the hopping index based on the Unix Timestamp from the ESP32 internal RTC (synchronized with GPS); all nodes **SHALL** rotate to the same frequency window every T milliseconds.
-4. **WHEN** a node fails to receive an ACK for three consecutive packets, **THEN** it **SHALL** enter "Search Mode," cycling through all 32 channels until it re-establishes contact with the mesh sequence.
-5. **IF** the RTC timestamp drifts, **THEN** the system **SHALL** use the next GPS-lock event to recalibrate.
+1. **[DEFERRED]** Pseudo-Random Frequency Hopping (PRFH) is **removed from MVP scope** due to time synchronization complexity across nodes with different boot times.
+2. **[Phase 1]** The system **SHALL** operate on a static 433MHz frequency as configured in Meshtastic region settings (EU_433).
+3. **[Future Enhancement]** PRFH may be implemented in future releases if GPS time synchronization and LCG key distribution can be reliably achieved across the mesh.
 
 #### REQ-SEC-03: Anti-Tampering & Replay Prevention
 **User Story:** As a user, I want my messages to be protected from being replayed or tampered with.
@@ -270,13 +271,13 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 
 **Acceptance Criteria:**
 1. **The system SHALL** utilize the ESP32-WROOM-32 as the main MCU (Dual Core: Core 0 for LoRa/Mesh, Core 1 for UI/Sensors).
-2. **The system SHALL** utilize the Ebyte E32-433T20D for LoRa communication (433MHz, UART Interface, 100mW).
+2. **The system SHALL** utilize the **Ra-02 (SX1278) module** for LoRa communication (433MHz, **SPI Interface**, 100mW) integrated via Meshtastic firmware v2.6.x.
 3. **The system SHALL** use 2x 21700 Li-ion cells in parallel for power (10,000 mAh).
-4. **The system SHALL** include a Neo-6M GPS module (NMEA Protocol) with V_BCKP connected directly to battery for Hot Start.
-5. **The system SHALL** include an MPU6050 6-Axis Accelerometer/Gyroscope for Fall Detection (Low Power Cycle Mode for Wake-on-Motion or timer-based for MVP).
-
-7. **The system SHALL** use AO3401 P-Channel MOSFETs for high-side power switching of peripherals.
-8. **The system SHALL** include 2N3904 or S8050 NPN transistors to drive MOSFET gates from ESP32 3.3V logic.
+4. **The system SHALL** include a Neo-6M GPS module (NMEA Protocol) with internal backup battery for Hot Start.
+5. **The system SHALL** include an MPU6050 6-Axis Accelerometer/Gyroscope for Fall Detection (I2C interface, shared bus with OLED).
+6. **The system SHALL** be based on **Meshtastic firmware v2.6.x** fork with custom TrekLink board variant.
+7. **The system SHALL** use IRF9530N P-Channel MOSFETs for high-side power switching of peripherals.
+8. **The system SHALL** include S8050-D NPN transistors to drive MOSFET gates from ESP32 3.3V logic.
 
 #### REQ-HW-02: Interface Components
 **User Story:** As a user, I want clear feedback from the device.
@@ -303,18 +304,18 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 #### REQ-HW-04: Pinout & Wiring
 **User Story:** As a developer, I want a defined pinout to implement the firmware correctly.
 
-**Acceptance Criteria:**
-1. **LoRa (E32):** TX → GPIO 17, RX → GPIO 16, AUX → GPIO 27 (RTC_GPIO for wake), M0 → GPIO 18, M1 → GPIO 19.
-2. **GPS (Neo-6M):** TX → GPIO 14 (ESP32 RX), V_BCKP → V_BAT (direct).
-3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED, MPU6050).
-4. **MPU6050 INT:** → GPIO 34 (Input Only, for wake detection).
-5. **TP5100 CHRG Status:** → GPIO 35 (Input Only).
+**Acceptance Criteria (Updated for Ra-02 SPI):**
+1. **LoRa Ra-02 (SPI):** SCK → GPIO 5, MISO → GPIO 19, MOSI → GPIO 27, CS → GPIO 18, DIO0 → GPIO 26, RESET → GPIO 14.
+2. **GPS (Neo-6M):** RX → GPIO 16 (ESP32 TX1), TX → GPIO 17 (ESP32 RX1), uses hardware UART1.
+3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED SSD1306 0x3C, MPU6050 0x68).
+4. **MPU6050 INT:** → GPIO 34 (Input Only, for fall detection wake).
+5. **Battery ADC:** → GPIO 36 (Input Only, ADC1_CH0 for voltage sensing).
 6. **GPS P-MOSFET Gate Control:** → GPIO 13 (via S8050-D gate driver transistor).
 7. **OLED GND Switch Control:** → GPIO 23 (S8050-D NPN for low-side switching, Silent Mode).
-8. **Buzzer:** → GPIO 12.
-9. **Vibrator:** → GPIO 15.
-10. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 26, BTN_UP → GPIO 32, BTN_DOWN → GPIO 33.
-11. **Slide Switch:** SW_SLIDE → GPIO 4.
+8. **Buzzer:** → GPIO 33 (Passive buzzer, PWM output).
+9. **Vibrator:** → GPIO 4 (Motor via NPN transistor).
+10. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 34, BTN_UP → GPIO 32, BTN_DOWN → GPIO 35.
+11. **Status LED:** → GPIO 2 (Built-in blue LED).
 
 ---
 
@@ -344,24 +345,27 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 #### REQ-ENV-01: Framework & Language
 **User Story:** As a developer, I want to use standard tools, so that the code is maintainable and compatible with libraries.
 
-**Acceptance Criteria:**
-1. **The system SHALL** be developed in C++ (C++17 standard where supported by the Arduino framework).
-2. **The system SHALL** utilize the Arduino Framework for ESP32 (latest stable release).
-3. **The system SHALL** integrate a Reed-Solomon FEC library compatible with Arduino/ESP32.
+**Acceptance Criteria (Updated for Meshtastic Fork):**
+1. **The system SHALL** be developed as a **Meshtastic firmware v2.6.x fork** using C++ (C++17 standard).
+2. **The system SHALL** utilize the **Meshtastic firmware architecture** with custom TrekLink board variant.
+3. **The system SHALL** leverage **RadioLib** for Ra-02 (SX1278) SPI communication.
+4. **[Phase 2 Optional]** The system **MAY** integrate custom TrekLink modules for fall detection and hybrid encryption.
 
 #### REQ-ENV-02: Build System
 **User Story:** As a developer, I want a reproducible build environment, so that anyone can compile the project.
 
-**Acceptance Criteria:**
-1. **The system SHALL** use PlatformIO Core as the build system.
-2. **The project configuration SHALL** be defined completely in `platformio.ini`.
+**Acceptance Criteria (Updated for Meshtastic):**
+1. **The system SHALL** use **PlatformIO** as the build system with `esp32_base` platform.
+2. **The project configuration SHALL** include a custom `env:treklink-esp32` environment in `platformio.ini`.
+3. **The custom board variant SHALL** be defined in `variants/treklink_esp32/variant.h` with all GPIO mappings.
+4. **The system SHALL** compile with Meshtastic dependencies including `jgromes/RadioLib@^6.0.0`.
 
 #### REQ-ENV-03: Simulation
 **User Story:** As a developer, I want to verify logic without hardware, so that I can iterate quickly.
 
 **Acceptance Criteria:**
-1. **The system SHALL** be verifiable using the Wokwi simulator for UI flows, button debouncing, and I2C/UART mock protocols.
-2. **The simulation configuration SHALL** be maintained in `diagram.json` to match the hardware pinout.
+1. **The system SHALL** be verifiable using the Wokwi simulator for basic UI flows, button debouncing, and I2C protocols.
+2. **NOTE:** Meshtastic firmware may require hardware-specific adaptations for full Wokwi compatibility. Core logic can be tested in isolation.
 
 ---
 

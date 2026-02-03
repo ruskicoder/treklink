@@ -66,11 +66,13 @@ public:
 
     // ========== Diagnostic Functions ==========
     
+    #ifdef DEBUG
     /**
      * Print power states to Serial
      * For debugging and verification
      */
     void printStatus();
+    #endif
 
 private:
     bool gpsEnabled;    // Track GPS power state

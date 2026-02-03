@@ -16,12 +16,6 @@ void PowerGate::begin() {
     pinMode(OLED_GND_SWITCH_PIN, OUTPUT);
     digitalWrite(OLED_GND_SWITCH_PIN, OLED_POWER_ON);  // Start with OLED ON
     oledEnabled = true;
-
-    Serial.println("[PowerGate] Initialized");
-    Serial.print("  GPS Power: ");
-    Serial.println(gpsEnabled ? "ON" : "OFF");
-    Serial.print("  OLED Power: ");
-    Serial.println(oledEnabled ? "ON" : "OFF");
 }
 
 // ========== GPS Power Control ==========
@@ -29,17 +23,12 @@ void PowerGate::begin() {
 void PowerGate::enableGPS() {
     digitalWrite(GPS_POWER_GATE_PIN, GPS_POWER_ON);  // GPIO 13 = HIGH
     gpsEnabled = true;
-    
-    Serial.println("[PowerGate] GPS Enabled");
-    // Allow GPS module to stabilize (typical: 1-100ms depending on hot start)
-    delay(10);
+    // Note: GPS module stabilization handled by caller if needed
 }
 
 void PowerGate::disableGPS() {
     digitalWrite(GPS_POWER_GATE_PIN, GPS_POWER_OFF);  // GPIO 13 = LOW
     gpsEnabled = false;
-    
-    Serial.println("[PowerGate] GPS Disabled");
 }
 
 bool PowerGate::isGPSEnabled() {
@@ -51,17 +40,12 @@ bool PowerGate::isGPSEnabled() {
 void PowerGate::enableOLED() {
     digitalWrite(OLED_GND_SWITCH_PIN, OLED_POWER_ON);  // GPIO 23 = HIGH
     oledEnabled = true;
-    
-    Serial.println("[PowerGate] OLED Enabled");
-    // Allow OLED to stabilize
-    delay(5);
+    // Note: OLED stabilization handled by caller if needed
 }
 
 void PowerGate::disableOLED() {
     digitalWrite(OLED_GND_SWITCH_PIN, OLED_POWER_OFF);  // GPIO 23 = LOW
     oledEnabled = false;
-    
-    Serial.println("[PowerGate] OLED Disabled (Silent Mode)");
 }
 
 bool PowerGate::isOLEDEnabled() {
@@ -70,6 +54,7 @@ bool PowerGate::isOLEDEnabled() {
 
 // ========== Diagnostic Functions ==========
 
+#ifdef DEBUG
 void PowerGate::printStatus() {
     Serial.println("\n=== Power Gate Status ===");
     Serial.print("GPS Power:  ");
@@ -83,3 +68,4 @@ void PowerGate::printStatus() {
     Serial.println(digitalRead(OLED_GND_SWITCH_PIN) ? "HIGH" : "LOW");
     Serial.println("========================\n");
 }
+#endif
