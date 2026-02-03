@@ -10,27 +10,27 @@
 
 ### Phase 1: Project Setup & HAL (Hardware Abstraction Layer)
 
-- [ ] 1. Initialize PlatformIO project structure
+- [x] 1. Initialize PlatformIO project structure
   - Create `platformio.ini` with ESP32 configuration
   - Set up `src/`, `include/`, `lib/`, `test/` directories
   - Configure build flags for C++17
   - Add initial library dependencies (Adafruit_SSD1306, TinyGPSPlus, MPU6050_light)
   - _Requirements: REQ-ENV-01, REQ-ENV-02_
 
-- [ ] 1.1 Create Wokwi simulation configuration
+- [x] 1.1 Create Wokwi simulation configuration
   - Create `wokwi.toml` configuration file
   - Create `diagram.json` with ESP32, OLED, buttons, and LED components
   - Map virtual pins to match hardware pinout specification
   - _Requirements: REQ-ENV-03_
 
-- [ ] 2. Implement GPIO pin definitions and hardware constants
+- [x] 2. Implement GPIO pin definitions and hardware constants
   - Create `include/hardware_config.h` with all GPIO pin definitions
   - Define LoRa pins (TX:17, RX:16, AUX:27, M0:18, M1:19)
   - Define sensor pins (I2C SDA:21, SCL:22, MPU_INT:34)
   - Define UI pins (buttons, buzzer:12, vibrator:15, GPS_MOSFET:13, OLED_GND:23)
   - _Requirements: REQ-HW-04_
 
-- [ ] 3. Implement Power Gating driver
+- [x] 3. Implement Power Gating driver
   - Create `src/hal/power_gate.cpp` and `include/hal/power_gate.h`
   - Implement GPS P-MOSFET control via GPIO 13 (high-side switching via S8050-D gate driver)
   - Implement OLED NPN control via GPIO 23 (low-side GND switching for Silent Mode)
@@ -38,7 +38,7 @@
   - Test power gating logic with LED indicator
   - _Requirements: REQ-PWR-03.1, REQ-PWR-03.2, REQ-PWR-03.3_
 
-- [ ] 4. Implement Button Handler with debouncing
+- [x] 4. Implement Button Handler with debouncing
   - Create `src/hal/button_handler.cpp` and `include/hal/button_handler.h`
   - Implement debounce logic (50ms threshold)
   - Detect click, double-click, and hold events
