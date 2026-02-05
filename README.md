@@ -1,515 +1,359 @@
 # TrekLink
 
-> **ESP32 LoRa Mesh Communication Device for Off-Grid Adventures**
+> **Meshtastic-Powered Off-Grid Communication Device**  
+> ESP32 + Ra-02 433MHz LoRa + GPS + OLED
 
-TrekLink is a decentralized, battery-powered mesh communication device designed for hiking, trekking, and remote area exploration where cellular networks are unavailable. It combines LoRa long-range radio, GPS tracking, and fall detection to keep adventurers connected and safe.
+TrekLink is a custom variant of [Meshtastic](https://meshtastic.org/) firmware designed for off-grid communication in remote areas. It combines long-range 433MHz LoRa mesh networking with GPS tracking and a compact OLED display for backcountry adventures.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
 [![Platform: ESP32](https://img.shields.io/badge/Platform-ESP32-blue.svg)](https://www.espressif.com/en/products/socs/esp32)
-[![PlatformIO](https://img.shields.io/badge/IDE-PlatformIO-orange.svg)](https://platformio.org/)
+[![Meshtastic: 2.7.19](https://img.shields.io/badge/Meshtastic-2.7.19-green.svg)](https://meshtastic.org/)
+[![Radio: 433MHz](https://img.shields.io/badge/Radio-433MHz%20LoRa-orange.svg)]()
 
 ---
 
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start
 
-> **Choose Your IDE:** This project works with both **PlatformIO** (VS Code) and **pioarduino-ide** (OpenVSX/Antigravity).
+### Prerequisites
+- **Hardware:** ESP32-WROOM-32, Ra-02 SX1278 (433MHz), GPS Neo-6M, OLED SSD1306
+- **Software:** [PlatformIO](https://platformio.org/) (VS Code extension recommended)
+- **Mobile App:** [Meshtastic](https://meshtastic.org/docs/getting-started/download) (iOS/Android)
 
-### Option 1: PlatformIO (VS Code - Official)
-
-**Prerequisites:**
-- [VS Code](https://code.visualstudio.com/) + [PlatformIO Extension](https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide)
-- ESP32 DevKit V1 + USB cable
-
-**Steps:**
+### 1. Clone Repository
 ```bash
-# 1. Install PlatformIO extension in VS Code
-# 2. Clone repository
-git clone https://github.com/[your-org]/treklink.git
+git clone https://github.com/ruskicoder/treklink.git
 cd treklink
-
-# 3. Open in VS Code
-code .
-
-# 4. Build & Upload (PlatformIO toolbar or CLI)
-pio run -t upload
-
-# 5. Monitor serial output
-pio device monitor
 ```
 
-### Option 2: pioarduino-IDE (OpenVSX - Antigravity/VSCodium)
-
-**Prerequisites:**
-- VS Code with OpenVSX (Antigravity, VSCodium, etc.) + [pioarduino-ide Extension](https://open-vsx.org/extension/pioarduino/pioarduino-ide)
-- ESP32 DevKit V1 + USB cable
-
-**Steps:**
+### 2. Build Firmware
 ```bash
-# 1. Install pioarduino-ide from OpenVSX
-# 2. Clone repository
-git clone https://github.com/[your-org]/treklink.git
-cd treklink
+# Build TrekLink variant
+pio run -e treklink
 
-# 3. Open in your IDE
-# 4. Build & Upload (same commands as PlatformIO)
-pio run -t upload
+# Flash to ESP32
+pio run -e treklink -t upload
 
-# 5. Monitor serial output
-pio device monitor
+# Monitor serial output
+pio device monitor -b 115200
 ```
 
-> **Note:** pioarduino-ide is a **community fork** of PlatformIO with better ESP32 Arduino core v3 support. It uses the **same** `platformio.ini` config and commands. Projects are **100% compatible** between both tools.
-
-**Expected Output:**
+### 3. Expected Boot Log
 ```
-=================================
-TrekLink ESP32 LoRa Mesh Device
-Version: 1.0 MVP
-=================================
-
-[PowerGate] Initialized
-  GPS Power: OFF
-  OLED Power: ON
-[ButtonHandler] Initialized
-System initialized successfully
+[INFO] Meshtastic 2.7.19
+[INFO] Region: EU_433
+[INFO] Radio: SX1278 initialized
+[INFO] Frequency: 433.175 MHz
+[INFO] GPS: Neo-6M detected
+[INFO] OLED: SSD1306 0x3C found
 ```
 
-**That's it!** 🎉 Your ESP32 is now running TrekLink firmware.
+### 4. Connect to Meshtastic App
+1. Install **Meshtastic app** on your phone
+2. Enable **Bluetooth**
+3. Open app → **"Add Device"** → **"Bluetooth"**
+4. Select **"TrekLink_XXXX"** (XXXX = last 4 MAC digits)
+5. **Send messages** via mesh network! 📡
+
+---
+
+## 🛠️ Hardware Setup
+
+### Minimum Viable Configuration
+```
+ESP32-WROOM-32 + Ra-02 SX1278 + GPS Neo-6M + OLED SSD1306 + 1 Button
+```
+
+### Wiring Guide
+
+| Component | ESP32 GPIO | Notes |
+|-----------|------------|-------|
+| **Ra-02 LoRa (SPI)** | | |
+| SCK | 5 | SPI Clock |
+| MISO | 19 | SPI In |
+| MOSI | 27 | SPI Out |
+| CS | 18 | Chip Select |
+| DIO0 | 26 | **Critical** interrupt pin |
+| RESET | 14 | Module reset |
+| VCC | 3.3V | ⚠️ **NOT 5V!** |
+| **GPS Neo-6M (UART)** | | |
+| TX (GPS) | 16 (RX1) | GPS → ESP32 |
+| RX (GPS) | 17 (TX1) | ESP32 → GPS |
+| VCC | 3.3V | Optional power gating via GPIO 13 |
+| **OLED SSD1306 (I2C)** | | |
+| SDA | 21 | I2C Data |
+| SCL | 22 | I2C Clock |
+| VCC | 3.3V | Optional power gating via GPIO 23 |
+| **MENU Button** | | |
+| Button | 25 → GND | Internal pull-up enabled |
+| **Battery Monitor** | | |
+| ADC | 36 | Voltage divider (2:1 ratio) |
+
+**📋 Full pinout:** See [specifications.md](specifications.md#32-gpio-pinout-allocation)  
+**🔧 Hardware testing:** See [phase1_hardware_testing.md](C:\Users\PC\.gemini\antigravity\brain\8b95c2df-5ee8-4678-8d5d-b41e629acc51\phase1_hardware_testing.md)
 
 ---
 
 ## ✨ Features
 
-### Current Implementation (Phase 1 - Complete)
-- ✅ **PlatformIO Project Structure** - ESP32 development environment
-- ✅ **GPIO Pin Definitions** - Complete hardware configuration
-- ✅ **Power Gating Driver** - GPS & OLED power control for battery saving
-- ✅ **Button Handler** - Debouncing, click, double-click, hold detection
-- ✅ **Wokwi Simulation** - Test UI logic without hardware
+### ✅ Current (Phase 1 - Meshtastic Base)
+- **433MHz LoRa Mesh** - Compatible with all Meshtastic devices
+- **GPS Location Sharing** - U-BLOX Neo-6M with position beacons
+- **OLED Display** - 128x64 Meshtastic UI (messages, nodes, stats, compass)
+- **Bluetooth Connectivity** - Pair with iOS/Android Meshtastic app
+- **Single-Button Navigation** - Cycle screens, send pings
+- **Battery Monitoring** - ADC voltage sensing with % display
+- **EU_433 Region** - 433.175 MHz LoRa frequency
+- **Encrypted Mesh** - Meshtastic PKC end-to-end encryption
 
-### Planned Features (MVP Roadmap)
-- 🔄 **LoRa Mesh Networking** - Managed flooding protocol
-- 🔄 **GPS Tracking** - Location sharing with mesh nodes
-- 🔄 **Fall Detection** - Automatic SOS alerts using MPU6050
-- 🔄 **OLED Display** - Dashboard, map, message viewer
-- 🔄 **Preset Messages** - Quick communication templates
-- 🔄 **Silent Mode** - OLED/buzzer off, vibration-only alerts
-- 🔄 **AES-128-GCM Encryption** - Secure mesh communication
-
----
-
-## 🔧 Hardware Requirements
-
-### Core Components (Per Device)
-
-| Component | Part Number | Qty | Purpose |
-|-----------|-------------|-----|---------|
-| **MCU** | ESP32-WROOM-32 DevKit V1 (30-pin) | 1 | Main processor |
-| **LoRa** | Ebyte E32-433T20D (433MHz, 100mW) | 1 | Long-range radio |
-| **GPS** | Neo-6M with antenna | 1 | Location tracking |
-| **IMU** | MPU6050 GY-521 breakout | 1 | Fall detection |
-| **Display** | SSD1306 128x64 OLED (I2C) | 1 | User interface |
-| **Battery** | 2x 21700 Li-ion (5000mAh, 3.7V) | 2 | ~10Ah capacity |
-| **Charger** | TP5100 2A dual-cell charger | 1 | Battery charging |
-| **Buck Converter** | Mini360 DC-DC (3.3V output) | 1 | Power regulation |
-
-### User Interface
-
-| Component | Qty | Notes |
-|-----------|-----|-------|
-| Tactile buttons (12x12mm) | 4 | MENU, SOS, UP, DOWN |
-| Passive buzzer (3.3V, PWM) | 1 | Audio feedback |
-| Coin vibration motor (10mm) | 1 | Haptic feedback |
-| Slide switch (SPDT) | 1 | Power ON/OFF |
-| Status LED (5mm blue) | 1 | Visual indicator |
-
-### Power Gating Components
-
-| Component | Qty | Purpose |
-|-----------|-----|---------|
-| IRF9530N P-MOSFET (TO-220) | 1 | GPS high-side switch |
-| S8050-D NPN transistors (TO-92) | 2 | Gate driver + OLED switch |
-| 10kΩ resistors (1/4W) | 5 | Pull-ups & pull-downs |
-| 1kΩ resistors (1/4W) | 2 | Base current limiting |
-| 4.7kΩ resistors (1/4W) | 2 | I2C pull-ups |
-
-**📦 Full BOM:** See [BOM_Development.md](BOM_Development.md) for complete parts list with suppliers.
+### 🔄 Planned (Phase 2 - Custom Enhancements)
+- **Fall Detection** - MPU6050 IMU with automatic SOS alerts
+- **Silent Mode** - OLED power gating (GPIO 23) for stealth operation
+- **Multi-Button Controls** - SOS (GPIO 34), UP (GPIO 32), DOWN (GPIO 35)
+- **GPS Power Gating** - GPIO 13 P-MOSFET circuit for battery savings
+- **Custom Encryption Layer** - Optional AES-128-GCM for private TrekLink comms
+- **Vibration/Buzzer Alerts** - Notification outputs (GPIO 4, 33)
 
 ---
 
-## 📌 Pin Connections
+## 📱 Usage
 
-### ESP32 DevKit V1 Pinout
+### Meshtastic App (Primary Interface)
+All configuration and messaging is done via the **Meshtastic mobile app**:
+- **Send/receive messages** - Text communication across mesh
+- **View nodes** - See nearby Meshtastic devices
+- **Share location** - GPS coordinates via mesh
+- **Configure settings** - Region, channel, encryption keys
+- **OTA updates** - Update firmware wirelessly
 
-**⚠️ IMPORTANT:** ESP32 operates at **3.3V logic**. All connections shown below are 3.3V compatible.
-
-| Module | ESP32 Pin | GPIO | Function | Notes |
-|--------|-----------|------|----------|-------|
-| **LoRa E32-433T20D** ||||
-| E32 RXD | TX2 (R) | GPIO 17 | UART TX | ESP32 → LoRa |
-| E32 TXD | RX2 (R) | GPIO 16 | UART RX | LoRa → ESP32 |
-| E32 AUX | D27 (L) | GPIO 27 | Interrupt | Wake-on-Radio |
-| E32 M0 | D18 (R) | GPIO 18 | Mode | LoRa mode control |
-| E32 M1 | D19 (R) | GPIO 19 | Mode | LoRa mode control |
-| E32 VCC | 3V3 | - | Power | **3.3V ONLY** |
-| E32 GND | GND | - | Ground | Common GND |
-| **GPS Neo-6M** ||||
-| GPS TX | D14 (L) | GPIO 14 | RX | NMEA input |
-| GPS VCC | - | - | Power | Via P-MOSFET (GPIO 13 control) |
-| GPS GND | GND | - | Ground | Common GND |
-| **I2C Bus (OLED + MPU6050)** ||||
-| SDA | D21 (R) | GPIO 21 | I2C Data | 4.7kΩ pull-up required |
-| SCL | D22 (R) | GPIO 22 | I2C Clock | 4.7kΩ pull-up required |
-| **MPU6050 IMU** ||||
-| MPU INT | D34 (L) | GPIO 34 | Interrupt | Fall detection wake |
-| MPU VCC | 3V3 | - | Power | Always-on |
-| MPU GND | GND | - | Ground | Common GND |
-| **OLED Display** ||||
-| OLED SDA | D21 (R) | GPIO 21 | I2C Data | Shared with MPU6050 |
-| OLED SCL | D22 (R) | GPIO 22 | I2C Clock | Shared with MPU6050 |
-| OLED VCC | 3V3 | - | Power | Always-on |
-| OLED GND | D23 (R) | GPIO 23 | GND Switch | NPN low-side (Silent Mode) |
-| **Buttons** ||||
-| MENU | D25 (L) | GPIO 25 | Input | Active LOW + pull-down |
-| SOS | D26 (L) | GPIO 26 | Input | Active LOW + pull-down |
-| UP | D32 (L) | GPIO 32 | Input | Active LOW + pull-down |
-| DOWN | D33 (L) | GPIO 33 | Input | Active LOW + pull-down |
-| **Power Control** ||||
-| Slide Switch | D4 (R) | GPIO 4 | Input | Power ON/OFF detect |
-| GPS Power Gate | D13 (L) | GPIO 13 | Output | P-MOSFET gate control |
-| OLED GND Switch | D23 (R) | GPIO 23 | Output | NPN base (Silent Mode) |
-| CHRG Status | D35 (L) | GPIO 35 | Input | TP5100 charging indicator |
-| **Audio/Haptic** ||||
-| Buzzer | D12 (L) | GPIO 12 | PWM Output | Passive buzzer tone generation |
-| Vibrator | D15 (R) | GPIO 15 | Output | Motor via NPN transistor |
-
-**Legend:** (R) = Right side of board, (L) = Left side of board
-
-**🔌 Wiring Diagrams:** See [design.md Section 3.6](/.kiro/specs/treklink/design.md#36-circuit-wiring-and-connections) for detailed breadboard wiring.
+### On-Device Button (Field Monitoring)
+The **MENU button (GPIO 25)** cycles OLED screens:
+- **Single press** - Next screen (Messages → Nodes → Stats → Compass)
+- **Double press** - Send location ping
+- **Long press (3s)** - Toggle screen on/off (battery saver)
 
 ---
 
-## 💻 Software Setup
+## 📐 Technical Specifications
 
-### Choose Your Development Environment
+| **Category** | **Specification** |
+|--------------|-------------------|
+| **Microcontroller** | ESP32-WROOM-32 (240MHz, 320KB RAM, 4MB Flash) |
+| **Radio** | Ra-02 SX1278 (433MHz, SPI, 20dBm max TX power) |
+| **GPS** | Neo-6M (UART, NMEA 9600 baud, internal backup battery) |
+| **Display** | SSD1306 OLED 0.96" (128x64, I2C 0x3C, white) |
+| **IMU** | MPU6050 (I2C 0x68, 3-axis gyro + accel) - *Phase 2* |
+| **Power** | 2x 21700 Li-Ion (10,000mAh total, 3.7V nominal) |
+| **Battery Life** | ~110 hours active, ~400 hours deep sleep |
+| **Firmware** | Meshtastic v2.7.19 (ESP32 Arduino framework) |
+| **Build System** | PlatformIO |
 
-**Option 1: PlatformIO (VS Code - Official)** - Recommended for VS Code users
-
-**Option 2: pioarduino-IDE (OpenVSX)** - For Antigravity, VSCodium, Cursor, or other OpenVSX-based editors
-
-Both use the **same project structure** and `platformio.ini` configuration file. All commands are identical.
-
----
-
-### Install PlatformIO (VS Code)
-
-1. Install [VS Code](https://code.visualstudio.com/)
-2. Open Extensions (Ctrl+Shift+X)
-3. Search "PlatformIO IDE"
-4. Click Install
-5. Reload VS Code
-
-**CLI Alternative:**
-```bash
-python -m pip install platformio
-```
+**📊 Full specs:** See [specifications.md](specifications.md)
 
 ---
 
-### Install pioarduino-IDE (OpenVSX)
-
-**For Antigravity, VSCodium, Cursor, etc.:**
-
-1. Open Extensions
-2. Search "pioarduino-ide" in OpenVSX
-3. Click Install
-4. Reload editor
-
-**Direct Link:** https://open-vsx.org/extension/pioarduino/pioarduino-ide
-
-> **Why pioarduino-ide?**  
-> - ✅ Available on OpenVSX (official PlatformIO is not)
-> - ✅ Better ESP32 Arduino Core v3 support
-> - ✅ Same commands, same `platformio.ini`, 100% compatible
-> - ✅ Community-maintained fork of PlatformIO
-
----
-
-### Project Structure
+## 🏗️ Project Structure
 
 ```
 treklink/
-├── src/
-│   ├── main.cpp              # Entry point
-│   └── hal/                  # Hardware Abstraction Layer
-│       ├── power_gate.cpp    # GPS/OLED power control
-│       └── button_handler.cpp # Button debouncing & events
-├── include/
-│   ├── hardware_config.h     # GPIO pin definitions
-│   └── hal/                  # HAL headers
-├── lib/                      # Custom libraries (future)
-├── test/                     # Unit tests (future)
-├── platformio.ini            # PlatformIO configuration
-├── wokwi.toml               # Wokwi simulator config
-└── diagram.json             # Wokwi virtual circuit
-
-Documentation:
-├── .kiro/specs/treklink/
-│   ├── requirements.md       # EARS-format requirements
-│   ├── design.md            # Technical design & architecture
-│   └── tasks.md             # Implementation task list
-├── BOM_Development.md       # Hardware bill of materials
-└── specifications.md        # Full system specifications
-```
-
-### Build & Upload
-
-```bash
-# Build firmware
-pio run
-
-# Upload to ESP32 (auto-detects port)
-pio run -t upload
-
-# Upload + Monitor serial output
-pio run -t upload && pio device monitor
-
-# Clean build
-pio run -t clean
-```
-
-### Serial Monitor
-
-```bash
-# Start monitor (115200 baud)
-pio device monitor
-
-# Exit: Ctrl+C
-```
-
-**Expected Output:**
-```
-=================================
-TrekLink ESP32 LoRa Mesh Device
-Version: 1.0 MVP
-=================================
-
-[PowerGate] Initialized
-  GPS Power: OFF
-  OLED Power: ON
-[ButtonHandler] Initialized
-  Button config: Active LOW with pull-down
-  Debounce: 50ms
-  Double-click window: 300ms
-  Hold threshold: 1000ms
-
-System initialized successfully
+├── variants/esp32/treklink/      # TrekLink custom variant
+│   ├── variant.h                 # GPIO pin definitions
+│   ├── pins_arduino.h            # Arduino pin mappings
+│   └── platformio.ini            # Build configuration
+├── boards/
+│   └── treklink-esp32.json       # Board definition
+├── src/                          # Meshtastic source code
+├── .kiro/specs/treklink/         # Design documents
+│   ├── requirements.md           # EARS requirements
+│   ├── design.md                 # Technical design
+│   └── tasks.md                  # Implementation tasks
+├── specifications.md             # Hardware/software specs (SSOT)
+├── platformio.ini                # Main build config
+└── README.md                     # This file
 ```
 
 ---
 
-## 🧪 Testing & Debugging
+## 🔧 Development
 
-### Phase 1 Testing (Current)
-
-**1. USB Power Test (No Battery Needed)**
-```bash
-# Connect ESP32 via USB
-# Upload firmware
-pio run -t upload && pio device monitor
-
-# Verify startup messages appear
-```
-
-**2. OLED I2C Test**
-```bash
-# Connect OLED to D21 (SDA) and D22 (SCL)
-# Add 4.7kΩ pull-up resistors to SDA/SCL
-# Run I2C scanner (future task)
-```
-
-**3. Button Test**
-```bash
-# Connect buttons to GPIO 25, 26, 32, 33
-# Press buttons and check serial output
-# Verify: click, double-click, hold events
-```
-
-**4. Wokwi Simulation**
+### Build Commands
 ```bash
 # Build firmware
-pio run
+pio run -e treklink
 
-# Open Wokwi simulator in VS Code
-# Test buttons and OLED without hardware
+# Clean build
+pio run -e treklink --target clean
+
+# Flash to ESP32
+pio run -e treklink -t upload
+
+# Serial monitor
+pio device monitor -b 115200
+
+# Upload + monitor
+pio run -e treklink -t upload && pio device monitor -b 115200
 ```
 
-### Power Gating Test (Requires Battery)
+### Firmware Files
+After successful build, binaries are in `.pio/build/treklink/`:
+- `firmware-treklink-2.7.19.408e923.bin` - Main application (OTA updates)
+- `firmware-treklink-2.7.19.408e923.factory.bin` - Full flash image
+- `littlefs-treklink-2.7.19.408e923.bin` - Filesystem (config/data)
 
-**⚠️ Not testable yet:** Power gating requires battery and full circuit assembly.
+### Custom Variant Configuration
+TrekLink uses a custom ESP32 variant with specific GPIO assignments. To modify:
+1. Edit `variants/esp32/treklink/variant.h`
+2. Update GPIO pin definitions
+3. Rebuild: `pio run -e treklink --target clean && pio run -e treklink`
 
-### Debug Tools
+---
 
-**Enable Verbose Logs:**
-Edit `platformio.ini`:
-```ini
-build_flags = 
-    -DCORE_DEBUG_LEVEL=5  # Change from 3 to 5
-```
+## 🧪 Testing
 
-**Check Compilation:**
+### Serial Monitor Test
 ```bash
-pio run -v  # Verbose build output
+pio device monitor -b 115200
 ```
 
-**Firmware Size:**
-```bash
-pio run -t size
+**Expected output:**
 ```
+[INFO] Region: EU_433
+[INFO] Radio: SX1278 initialized      ← ✅ Ra-02 working
+[INFO] GPS: Fix acquired (8 sats)     ← ✅ GPS working
+[INFO] OLED: SSD1306 0x3C found       ← ✅ Display working
+```
+
+### Bluetooth Pairing Test
+1. Device boots → OLED shows Meshtastic logo
+2. Phone Bluetooth → See "TrekLink_XXXX"
+3. Meshtastic app → Connect → Device info shows
+
+### Mesh Communication Test
+1. Get **second Meshtastic device** (any variant)
+2. Set both to **same region** (EU_433) and **same channel**
+3. Send message Device A → Device B
+4. Verify message received + RSSI/SNR displayed
+
+**📋 Full testing guide:** See [phase1_hardware_testing.md](C:\Users\PC\.gemini\antigravity\brain\8b95c2df-5ee8-4678-8d5d-b41e629acc51\phase1_hardware_testing.md)
+
+---
+
+## 🗺️ Roadmap
+
+### Phase 1: ✅ Working Meshtastic Device (COMPLETE)
+- [x] Clone Meshtastic v2.7.19
+- [x] Create TrekLink custom variant
+- [x] Configure Ra-02 SX1278 (433MHz SPI)
+- [x] Set GPIO pinout (Meshtastic DIY + TrekLink custom)
+- [x] Build & verify firmware compilation
+- [ ] Flash + test on hardware
+- [ ] Verify Bluetooth pairing
+- [ ] Test mesh communication
+
+### Phase 2: 🔄 Custom Enhancements (Optional)
+- [ ] Implement `TrekLinkButtonModule` (SOS, UP, DOWN buttons)
+- [ ] Add `FallDetectionModule` (MPU6050 IMU)
+- [ ] Implement GPS power gating circuit (GPIO 13)
+- [ ] Add Silent Mode OLED control (GPIO 23)
+- [ ] Custom TrekLink AES-128-GCM encryption layer
+- [ ] Buzzer/vibration notification outputs
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Upload Fails
+### Build Errors
 
-**Problem:** `Failed to connect to ESP32`
-
-**Solutions:**
-1. Hold BOOT button while uploading
-2. Check USB cable (must support data, not just power)
-3. Install CP2102 driver: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
-4. Try different USB port
-5. Check COM port: `pio device list`
-
-### I2C Not Working
-
-**Problem:** OLED not detected
-
-**Solutions:**
-1. Verify 4.7kΩ pull-up resistors on SDA (GPIO 21) and SCL (GPIO 22)
-2. Check OLED I2C address: Default 0x3C (some use 0x3D)
-3. Multiple I2C devices? Ensure no address conflicts
-4. Run I2C scanner to detect devices
-
-### Button Not Responding
-
-**Problem:** Button presses not detected
-
-**Solutions:**
-1. Check button wiring: One side to GPIO, other to GND
-2. Verify GPIO pin numbers in `hardware_config.h`
-3. Buttons are **active LOW** (pressed = GND)
-4. Internal pull-down enabled in code (no external resistor needed)
-
-### Compilation Errors
-
-**Problem:** `fatal error: Arduino.h: No such file or directory`
-
-**Solution:**
+**Error:** `pins_arduino.h: No such file`
 ```bash
-# Reinstall ESP32 platform
-pio platform install espressif32 --force
+# Missing file - should exist at variants/esp32/treklink/pins_arduino.h
+# Re-clone repository if missing
 ```
 
-**Problem:** Library not found
-
-**Solution:**
+**Error:** `LORA_DIO1 was not declared`
 ```bash
-# Install libraries manually
-pio lib install "Adafruit SSD1306"
-pio lib install "Adafruit GFX Library"
+# Check variant.h includes:
+#define LORA_DIO1 RADIOLIB_NC
 ```
 
-### Serial Monitor Garbage
+### Runtime Errors
 
-**Problem:** Unreadable characters
+**Radio init failed**
+- ❌ Check SPI wiring: SCK=5, MISO=19, MOSI=27, CS=18, RESET=14
+- ❌ Verify 3.3V power (NOT 5V!)
+- ❌ Test Ra-02 module with multimeter
 
-**Solutions:**
-1. Set baud rate: `pio device monitor -b 115200`
-2. ESP32 boot message at 74880 baud is normal (ignore)
-3. Check COM port settings
+**DIO0 interrupt timeout**
+- ❌ Check GPIO 26 connected to Ra-02 DIO0 pin
+- ❌ Verify solid connection (breadboard contact issues common)
+
+**GPS no fix**
+- ⚠️ GPS requires outdoor clear sky view
+- ⚠️ Wait 5-10 minutes for cold start
+- ❌ Check TX/RX wires not swapped
+
+**OLED not found 0x3C**
+- ❌ Check I2C wiring: SDA=21, SCL=22
+- ❌ Verify OLED address 0x3C (some modules are 0x3D)
+- 🔧 Run I2C scanner sketch to detect address
 
 ---
 
 ## 📚 Documentation
 
-- **[Requirements](/.kiro/specs/treklink/requirements.md)** - Functional requirements (EARS format)
-- **[Design Document](/.kiro/specs/treklink/design.md)** - Architecture, circuits, wiring
-- **[Task List](/.kiro/specs/treklink/tasks.md)** - Implementation checklist
-- **[Specifications](specifications.md)** - Complete system specifications
-- **[BOM](BOM_Development.md)** - Hardware bill of materials
-
----
-
-## 🛣️ Development Roadmap
-
-### Phase 1: Setup & HAL ✅ (Complete)
-- [x] PlatformIO project structure
-- [x] Wokwi simulation config
-- [x] GPIO pin definitions
-- [x] Power gating driver
-- [x] Button handler
-
-### Phase 2: LoRa Communication (In Progress)
-- [ ] LoRa E32 driver
-- [ ] Packet structure
-- [ ] AES-128-GCM encryption
-- [ ] PRFH routing protocol
-- [ ] Managed flooding mesh
-- [ ] Reed-Solomon FEC
-
-### Phase 3: Sensors & Services
-- [ ] GPS service (TinyGPSPlus)
-- [ ] IMU service (fall detection)
-- [ ] Storage service (NVS)
-
-### Phase 4: Power Management
-- [ ] Deep sleep modes
-- [ ] Silent Mode
-- [ ] Battery monitoring
-
-### Phase 5-7: UI & Features
-- [ ] OLED display driver
-- [ ] Dashboard, map, menu
-- [ ] Preset messages
-- [ ] SOS logic
+- **[specifications.md](specifications.md)** - Complete hardware/software specs (Single Source of Truth)
+- **[requirements.md](.kiro/specs/treklink/requirements.md)** - EARS requirements + user stories
+- **[design.md](.kiro/specs/treklink/design.md)** - Technical architecture + design decisions
+- **[tasks.md](.kiro/specs/treklink/tasks.md)** - Implementation task breakdown
+- **[phase1_hardware_testing.md](C:\Users\PC\.gemini\antigravity\brain\8b95c2df-5ee8-4678-8d5d-b41e629acc51\phase1_hardware_testing.md)** - Hardware wiring & testing guide
+- **[Meshtastic Docs](https://meshtastic.org/docs/)** - Official Meshtastic documentation
 
 ---
 
 ## 🤝 Contributing
 
-This is a university project (EXE101-G1-TREKLINK). Contributions are welcome!
+TrekLink is based on the [Meshtastic](https://github.com/meshtastic/firmware) project. Contributions welcome!
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open Pull Request
+### Development Setup
+1. Fork repository
+2. Create feature branch: `git checkout -b feature/my-feature`
+3. Make changes + test
+4. Commit: `git commit -m "Add my feature"`
+5. Push: `git push origin feature/my-feature`
+6. Open Pull Request
+
+### Custom Module Development (Phase 2)
+To add custom Meshtastic modules:
+1. Create module in `src/modules/`
+2. Register in `src/modules/Modules.cpp`
+3. Add to build flags in `variants/esp32/treklink/platformio.ini`
 
 ---
 
-## 📄 License
+## 📜 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### TrekLink Custom Variant
+MIT License - see [LICENSE](LICENSE)
 
----
-
-## 👥 Team
-
-**EXE101-G1-TREKLINK**  
-FPT University - Embedded Systems Project
+### Meshtastic Firmware Base
+GPL-3.0 License - see [Meshtastic License](https://github.com/meshtastic/firmware/blob/master/LICENSE)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Ebyte** - E32 LoRa module
-- **Espressif** - ESP32 microcontroller
-- **PlatformIO** - Development platform
-- **Adafruit** - Display libraries
-- **TinyGPS++** - GPS parsing library
+- **[Meshtastic Project](https://meshtastic.org/)** - Open-source mesh networking firmware
+- **[RadioLib](https://github.com/jgromes/RadioLib)** - Universal radio communication library
+- **ESP32 Community** - Hardware platform and tools
+- **LoRa Alliance** - Long-range radio technology
 
 ---
 
-**📡 Stay Connected. Stay Safe. Trek On!** 🏔️
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/ruskicoder/treklink/issues)
+- **Meshtastic Discord:** [Join Community](https://discord.gg/meshtastic)
+- **Documentation:** [Meshtastic Docs](https://meshtastic.org/docs/)
+
+---
+
+**Happy Meshing!** 📡🏔️

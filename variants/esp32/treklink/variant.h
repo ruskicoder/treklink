@@ -42,9 +42,12 @@
 #define PIN_VIBRATOR 4       // Vibration motor (via NPN transistor, avoid strapping pin 15)
 #define LED_PIN 2            // Built-in LED (Meshtastic default)
 
-// Power Management (Phase 2)
-#define PIN_GPS_PWR_EN 13    // GPS P-MOSFET gate (via NPN driver)
-#define PIN_OLED_GND_EN 23   // OLED GND switch (Silent Mode)
+// Power Management (REMOVED - Using Meshtastic Firmware Sleep Modes Instead)
+// #define PIN_GPS_PWR_EN 13    // GPS P-MOSFET gate (via NPN driver) - REMOVED
+// #define PIN_OLED_GND_EN 23   // OLED GND switch (Silent Mode) - REMOVED
+// Note: Hardware power gating removed to avoid GPS cold start issues and user confusion
+// Meshtastic firmware handles power saving via sleep modes and GPS power management
+
 
 // LoRa Ra-02 SX1278 (SPI Configuration - MESHTASTIC DIY DEFAULTS)
 #define LORA_SCK 5           // Meshtastic DIY standard

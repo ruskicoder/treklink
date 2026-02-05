@@ -11,7 +11,7 @@
 | Component | Part Number | Per Device | Total (x2) | Notes |
 |-----------|-------------|------------|------------|-------|
 | **ESP32 Development Board** | ESP32-WROOM-32 DevKit V1 (30-pin) | 1 | **2** | Through-hole pin headers, includes CP2102 USB-UART |
-| **LoRa Module** | Ebyte E32-433T20D with breakout | 1 | **2** | 433MHz, 100mW, UART interface, with pin headers |
+| **LoRa Module** | Ra-02 SX1278 breakout module | 1 | **2** | 433MHz SPI, 100mW (20dBm), with DIO0 exposed, IPEX antenna connector |
 | **GPS Module** | Neo-6M with breakout board | 1 | **2** | Includes ceramic patch antenna, UART+I2C |
 | **IMU Sensor** | MPU6050 GY-521 breakout | 1 | **2** | 6-axis accelerometer/gyroscope, I2C interface |
 | **OLED Display** | 0.96" SSD1306 128x64 I2C module | 1 | **2** | Blue/White, 4-pin header (VCC, GND, SCL, SDA) |
@@ -32,19 +32,13 @@
 
 ---
 
-## Power Gating & Switching (Through-Hole)
+## Power Management Switching
 
-> **Note:** Power gating circuit will be tested on breadboard first (see design.md section 3.6.6 for wiring), then transferred to perfboard  
-> **Configuration:** GPS uses P-MOSFET (high-side), OLED uses NPN transistor (low-side) for independent control in Silent mode
+| Component | Part Number/Spec | Per Device | Total (x2) | Notes |
+|-----------|------------------|------------|------------|-------|
+| **Slide Switch** | SPDT 2-position slide (through-hole) | 1 | **2** | Main power ON/OFF |
 
-| Component | Part Number/Spec | Per Device | Total (x2 + spares) | Notes |
-|-----------|------------------|------------|---------------------|-------|
-| **P-Channel MOSFET** | **IRF9530N** (TO-220) | 1 | **3** | GPS power gating (2 devices + 1 spare) |
-| **NPN Transistor (Gate Driver)** | S8050-D | 1 | **2** | For GPS MOSFET gate driver |
-| **NPN Transistor (OLED Switch)** | S8050-D | 1 | **2** | For OLED low-side switching (Silent mode support) |
-| **Pull-up Resistor** | 10kΩ (1/4W) | 1 | **3** | MOSFET gate pull-up (2 devices + 1 spare) |
-| **Base Resistor** | 1kΩ (1/4W) | 2 | **5** | NPN base current limiting (GPS gate + OLED switch, +1 spare) |
-| **Slide Switch** | SPDT 2-position slide (through-hole) | 1 | **2** | Power ON/OFF |
+> **Note:** Hardware power gating (GPS P-MOSFET, OLED NPN switch) has been removed from design. Meshtastic firmware handles power saving via sleep modes and GPS power management.
 
 ---
 
@@ -57,7 +51,7 @@
 | **Vibration Motor** | Coin vibration motor (10mm) with wires | 1 | **2** | Haptic feedback |
 | **Status LED** | Blue LED 5mm (1.8-2V forward voltage) | 1 | **2** | Basic status indication |
 | **LED Current Resistor** | 220Ω (1/4W) | 1 | **2** | For status LED current limiting |
-| **Transistor (Motor Driver)** | S8050-D (TO-92) | 1 | **2** | For vibration motor switching (same as gate drivers) |
+| **Transistor (Motor Driver)** | S8050-D (TO-92) | 1 | **2** | For vibration motor switching via GPIO 4 |
 | **Flyback Diode** | 1N4001 | 1 | **2** | Vibration motor protection |
 
 ---

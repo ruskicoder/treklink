@@ -296,10 +296,121 @@ graph TB
 #### Power Management
 
 | Control | GPIO | Type | Function |
-|---------|------|------|----------|
-| **PIN_GPS_PWR_EN** | 13 | Output | P-MOSFET gate (via S8050-D NPN driver) |
-| **PIN_OLED_GND_EN** | 23 | Output | OLED GND switch (Silent Mode) |
-| **BATTERY_PIN** | 36 | ADC Input Only | Voltage divider (2x 10kΩ, measures BAT/2) |
+|---------|------|------|-------------|
+| **BATTERY_PIN** | 36 | ADC Input Only | Voltage divider (100kΩ + 100kΩ, measures BAT/2) |
+| ~~**PIN_GPS_PWR_EN**~~ | ~~13~~ | ~~Output~~ | ~~GPS P-MOSFET control (REMOVED)~~ |
+| ~~**PIN_OLED_GND_EN**~~ | ~~23~~ | ~~Output~~ | ~~OLED GND switch (REMOVED)~~ |
+
+**Note:** GPIO 13 and GPIO 23 are now available for future features. Hardware power gating removed in favor of Meshtastic firmware power management.
+
+### 3.3 Power Management Strategy (Firmware-Based)
+
+**Design Decision: Hardware Power Gating Removed**
+
+Initial design included hardware power gating circuits:
+- GPS P-MOSFET (GPIO 13) for power control
+- OLED NPN switch (GPIO 23) for Silent Mode GND switching
+
+**Why Removed:**
+1. **GPS Cold Start Issue:** Cutting GPS power requires 5-10 minute reacquisition after power-on, defeating emergency use case
+2. **User Confusion:** Separate Meshtastic sleep mode (firmware) vs Silent Mode (hardware) created ambiguous UX  
+3. **Minimal Battery Savings:** GPS in Meshtastic power-save mode uses ~10mA; complete shutoff saves only 10mA (~2% total power)
+4. **OLED Already Handled:** Meshtastic firmware stops I2C data when screen sleeps (0mA draw regardless of VCC)
+
+**Final Approach: Meshtastic Firmware Power Management**
+
+Power saving is now fully controlled via Meshtastic configuration:
+
+```yaml
+Power Settings (Meshtastic App):
+  - Screen Timeout: 60 seconds (auto-sleep)
+  - GPS Update Interval: 120 seconds (battery saver)
+  - Light Sleep Enabled: Yes
+  - Device Role: CLIENT (not ROUTER for max battery life)
+```
+
+**Wake Behavior:**
+- Single-click MENU button → Screen on, GPS active
+- Consistent UX with standard Meshtastic devices
+- No cold start delays
+
+**GPIO 13 and GPIO 23 Status:**
+- Now available for future Phase 2 features if needed
+- Currently commented out in `variant.h`
+
+---
+   - Measure resistance: OLED GND to ESP32 GND = OPEN (NPN off by default)
+   - Measure voltage: OLED VCC = 3.3V (always powered)
+   - Measure voltage: OLED VCC = 3.3V (always powered)
+
+---
+
+#### Perfboard Layout Tips
+
+**Component Placement:**
+1. Place P-MOSFET and NPN close together (minimizes gate wire length)
+2. Place N-MOSFET near OLED connector
+3. Route power rails along perfboard edges (Battery+, GND, 3.3V)
+4. Use bus wire for GND and 3.3V rails (22 AWG solid core)
+
+**Soldering Order:**
+1. Solder all resistors first (R1, R2, R3)
+2. Solder transistors/MOSFETs (Q1, Q2, Q3)
+3. Solder power rail connections
+4. Solder GPIO wires last (flexible 26 AWG stranded)
+
+**Testing Without Peripherals:**
+1. Power ESP32 only (no GPS, no OLED connected)
+2. Measure voltage at P-MOSFET drain (GPS VCC point):
+   - GPIO 13 = LOW → 0V (MOSFET off)
+   - GPIO 13 = HIGH → 3.3V (MOSFET on, via regulator)
+3. Measure resistance OLED GND to ESP32 GND:
+   - GPIO 23 = LOW → OPEN (MOSFET off)
+   - GPIO 23 = HIGH → \u003c 1Ω (MOSFET on)
+
+**Common Build Mistakes:**
+- ❌ P-MOSFET Source/Drain swapped → GPS gets 7.4V directly (damage!)
+- ❌ Pull-up R2 connected to GND instead of Battery (+) → GPS always off
+- ❌ Using high-Vgs MOSFET for OLED → Silent Mode doesn't work
+- ❌ No pull-down R3 on N-MOSFET gate → OLED flickers randomly
+- ❌ Forgetting 3.3V regulator between P-MOSFET and GPS → 7.4V burns GPS!
+
+---
+
+#### Firmware Control Example
+
+```cpp
+// In setup()
+pinMode(PIN_GPS_PWR_EN, OUTPUT);    // GPIO 13
+pinMode(PIN_OLED_GND_EN, OUTPUT);   // GPIO 23
+
+digitalWrite(PIN_GPS_PWR_EN, HIGH);   // GPS ON
+digitalWrite(PIN_OLED_GND_EN, HIGH);  // OLED ON
+
+// To enable Silent Mode (in TrekLinkButtonModule)
+void toggleSilentMode() {
+    static bool silentMode = false;
+    silentMode = !silentMode;
+    
+    digitalWrite(PIN_OLED_GND_EN, silentMode ? LOW : HIGH);
+    
+    // Vibrate confirmation
+    digitalWrite(PIN_VIBRATOR, HIGH);
+    delay(200);
+    digitalWrite(PIN_VIBRATOR, LOW);
+}
+
+// To power-gate GPS (in GPS module)
+void disableGPS() {
+    digitalWrite(PIN_GPS_PWR_EN, LOW);  // Cut GPS power
+    delay(10);  // Allow capacitors to discharge
+}
+
+void enableGPS() {
+    digitalWrite(PIN_GPS_PWR_EN, HIGH);  // Restore GPS power
+    delay(100);  // Wait for GPS boot (cold start)
+}
+```
 
 ---
 
@@ -962,10 +1073,497 @@ void test_mpu6050() {
 
 ---
 
+## 11. TrekLink Power Wiring (1S2P 21700 Battery Configuration)
+
+### 11.1 Battery Pack Configuration
+
+**Configuration:** 1S2P (1 Series, 2 Parallel)  
+**Chemistry:** Li-Ion 21700 cells (Samsung 50E or equivalent)  
+**Nominal Voltage:** 3.7V  
+**Total Capacity:** 10,000mAh (2x 5000mAh in parallel)  
+**Voltage Range:** 3.0V (cutoff) to 4.2V (fully charged)
+
+**Wiring:**
+```
+[Cell 1 +] ──┬── Main BAT+ (3.7V nominal, 4.2V max)
+             │
+[Cell 2 +] ──┘
+
+[Cell 1 -] ──┬── Main GND
+             │
+[Cell 2 -] ──┘
+```
+
+**Safety Notes:**
+- ⚠️ Match cell capacities within 50mAh (use cells from same batch)
+- ⚠️ Ensure both cells have same voltage before paralleling (within 0.1V)
+- ⚠️ Use spring-loaded holders or spot-welded nickel strips (NO solder directly to cells)
+
+---
+
+### 11.2 Charger Module (TP5100)
+
+**Component:** TP5100 2A dual-cell Li-Ion charger module  
+**Input:** 5V USB-C (or barrel jack 5-9V DC)  
+**Charge Current:** 1A (adjustable via onboard resistor)  
+**Protection:** Overcharge, over-discharge, short circuit
+
+**Wiring:**
+```
+[External DC 5V+] ── TP5100 VIN+
+[External DC GND] ── TP5100 VIN-
+
+[Main BAT+] ──────── TP5100 BAT+
+[Main GND] ──────── TP5100 BAT-
+```
+
+**Status Indicators:**
+- **Red LED:** Charging active
+- **Green LED:** Charge complete
+- **CHRG Pin:** Can connect to ESP32 GPIO 35 for charge status monitoring (optional)
+
+---
+
+### 11.3 Voltage Regulator (Mini360 HM Buck Converter)
+
+**Component:** Mini360 HM DC-DC step-down converter  
+**Input Range:** 3.0V - 7.4V (supports 1S or 2S Li-Ion)  
+**Output:** 3.3V (adjustable via potentiometer)  
+**Max Current:** 1.8A (sufficient for ESP32 + Ra-02 + peripherals)  
+**Efficiency:** ~96% at 3.7V input
+
+**Wiring:**
+```
+[Main BAT+] ──────── Mini360 IN+
+[Main GND] ──────── Mini360 IN-
+
+ADJUST MINI360 POTENTIOMETER TO 3.3V OUTPUT (use multimeter)
+
+[Mini360 OUT+] ──┬── ESP32 3V3 pin
+                 ├── Ra-02 VCC (3.3V)
+                 ├── GPS Neo-6M VCC (via P-MOSFET power gate, GPIO 13)
+                 ├── OLED VCC
+                 └── MPU6050 VCC
+
+[Mini360 OUT-] ──── ESP32 GND (and all component GND)
+```
+
+**Adjustment Procedure:**
+1. Connect Mini360 input to 3.7V source (or battery)
+2. Measure output voltage with multimeter
+3. Turn potentiometer clockwise to increase, counter-clockwise to decrease
+4. Set to **3.3V ± 0.05V**
+5. Verify under load (connect ESP32, check voltage remains stable)
+
+**Critical Notes:**
+- ⚠️ **NEVER apply 7.4V (2S battery) to ESP32 directly!** Always use Mini360 regulator
+- ⚠️ Solder 100µF - 1000µF capacitor across Mini360 output for stability (see BOM)
+
+---
+
+### 11.4 Battery Fuel Gauge (Voltage Divider for ADC Monitoring)
+
+**Purpose:** Measure battery voltage via ESP32 ADC to estimate remaining capacity  
+**Method:** Resistive voltage divider (2:1 ratio) to bring 4.2V max battery voltage within ESP32 ADC range (0-3.3V)
+
+**Components Required:**
+- **Resistor A (R_TOP):** 100kΩ (1/4W, 1% tolerance)
+- **Resistor B (R_BOTTOM):** 100kΩ (1/4W, 1% tolerance)
+- **GPIO Pin:** GPIO 36 (ADC1_CH0, input-only pin on ESP32)
+
+**Wiring Diagram:**
+```
+[Main BAT+] ──────┬─── (direct to TP5100 and Mini360)
+                  │
+                  ├─── 100kΩ Resistor A (R_TOP)
+                  │
+                  ├─── ESP32 GPIO 36 (ADC1_CH0)  ← Measure here
+                  │
+                  ├─── 100kΩ Resistor B (R_BOTTOM)
+                  │
+[Main GND] ────────┴
+```
+
+**Voltage Divider Calculation:**
+```
+V_ADC = V_BAT × (R_BOTTOM / (R_TOP + R_BOTTOM))
+V_ADC = V_BAT × (100kΩ / 200kΩ) = V_BAT × 0.5
+```
+
+**Example Readings:**
+| Battery Voltage | ADC Voltage (GPIO 36) | Battery % | State |
+|----------------|-----------------------|-----------|-------|
+| 4.2V (full) | 2.1V | 100% | Fully charged |
+| 3.7V (nominal) | 1.85V | ~50% | Normal operation |
+| 3.3V (low) | 1.65V | ~20% | Low battery warning |
+| 3.0V (cutoff) | 1.5V | 0% | Critical - shutdown |
+
+**Firmware Configuration (variant.h):**
+```cpp
+#define BATTERY_PIN 36       // ADC1_CH0 input-only
+#define ADC_CHANNEL ADC1_GPIO36_CHANNEL
+#define ADC_MULTIPLIER 2.0   // Voltage divider ratio (100k/100k = 2:1)
+```
+
+**Meshtastic ADC Reading (automatic):**
+Meshtastic firmware reads battery voltage via `PowerStatus.cpp` and displays % on OLED + reports via telemetry packets.
+
+**Important Notes:**
+- ✅ **GPIO 36 is input-only** (no internal pull-up/down), ideal for ADC
+- ✅ Use **1% tolerance resistors** for accurate voltage measurement
+- ⚠️ **Do NOT use GPIO 32** (originally proposed) - it conflicts with button assignments and is not ideal for ADC due to touch sensor interference
+- ⚠️ Solder 0.1µF ceramic capacitor from GPIO 36 to GND for noise filtering (optional but recommended)
+
+---
+
+### 11.5 Complete Power Distribution Schematic
+
+```
+                          ┌─────────────────────────────────────┐
+                          │   BATTERY PACK (1S2P 21700)        │
+                          │   Cell 1 + Cell 2 (Parallel)       │
+                          │   3.7V Nominal, 10,000mAh Total    │
+                          └──────────┬──────────────────────────┘
+                                     │ BAT+
+                 ┌───────────────────┼───────────────────┐
+                 │                   │                   │
+                 │                   │                   │
+          ┌──────▼──────┐     ┌──────▼──────┐    ┌──────▼──────┐
+          │  TP5100     │     │  Mini360    │    │  Voltage    │
+          │  Charger    │     │  Buck 3.3V  │    │  Divider    │
+          │  (USB-C)    │     │  Regulator  │    │  (ADC)      │
+          └─────────────┘     └──────┬──────┘    │  100k+100k  │
+                                     │ 3.3V      │  → GPIO 36  │
+                                     │           └─────────────┘
+                 ┌───────────────────┼───────────────────┐
+                 │                   │                   │
+          ┌──────▼──────┐     ┌──────▼──────┐    ┌──────▼──────┐
+          │  ESP32      │     │  Ra-02 LoRa │    │  GPS (via   │
+          │  WROOM-32   │     │  SX1278     │    │  P-MOSFET)  │
+          │  (MCU)      │     │  433MHz SPI │    │  GPIO 13    │
+          └─────────────┘     └─────────────┘    └─────────────┘
+                 │                   │                   │
+          ┌──────▼──────┐     ┌──────▼──────┐           │
+          │  OLED (via  │     │  MPU6050    │           │
+          │  NPN GND)   │     │  IMU I2C    │           │
+          │  GPIO 23    │     │  0x68       │           │
+          └─────────────┘     └─────────────┘           │
+                 │                   │                   │
+                 └───────────────────┴───────────────────┘
+                                     │ GND
+                                     ▼
+                                  Main GND
+```
+
+---
+
+### 11.6 Power-On Sequence (Build Order)
+
+**Step 1: Battery Pack Assembly**
+1. Insert 2x 21700 cells into parallel holder
+2. Verify voltage: Both cells within 0.1V of each other
+3. Measure total voltage: Should be 3.7V ± 0.2V
+
+**Step 2: Charger Connection**
+1. Connect TP5100 BAT+ to battery pack +
+2. Connect TP5100 BAT- to battery pack -
+3. Plug USB-C cable, verify red LED lights up (charging)
+4. Wait until green LED (charge complete)
+
+**Step 3: Mini360 Adjustment**
+1. Connect Mini360 IN+ to BAT+, IN- to GND
+2. **WITHOUT connecting ESP32**, measure Mini360 OUT voltage
+3. Adjust potentiometer to **3.30V ± 0.05V**
+4. Verify stability under no-load condition
+
+**Step 4: Voltage Divider Verification**
+1. Solder 100kΩ + 100kΩ resistors in series
+2. Connect top resistor to BAT+
+3. Connect bottom resistor to GND
+4. Measure voltage at junction (should be **~1.85V** for 3.7V battery)
+5. Connect junction to ESP32 GPIO 36
+
+**Step 5: Power ESP32 + Peripherals**
+1. Connect Mini360 OUT+ to ESP32 3V3 pin
+2. Connect Mini360 OUT- to ESP32 GND
+3. Power on → ESP32 should boot (blue LED blinks)
+4. Verify serial output: `Meshtastic 2.7.19`
+
+**Step 6: Verify Battery Monitoring**
+1. Flash TrekLink firmware
+2. Check serial log for battery voltage reading
+3. Expected log: `Battery: 3.7V (50%)`
+4. Verify OLED displays battery icon with correct %
+
+---
+
+### 11.7 Troubleshooting Power Issues
+
+| **Symptom** | **Cause** | **Fix** |
+|-------------|-----------|---------|
+| ESP32 won't boot | Mini360 output ≠ 3.3V | Re-adjust potentiometer with multimeter |
+| Battery % shows 0% | Voltage divider wiring error | Verify GPIO 36 connected to resistor junction |
+| Battery % shows \u003e100% | Wrong `ADC_MULTIPLIER` in firmware | Should be 2.0 for 100k+100k divider |
+| TP5100 red LED always on | Battery voltage \u003c 3.0V (over-discharged) | Charge via USB-C for 30+ minutes |
+| Mini360 gets hot | Output short circuit | Disconnect all loads, check for solder bridges |
+| GPS not powering on | P-MOSFET circuit issue (GPIO 13) | See Section 3.3 power gating wiring |
+
+---
+
+## 6. Canned Message System
+
+TrekLink integrates Meshtastic's **CannedMessageModule** to enable rapid pre-defined message transmission in emergency scenarios, optimized for SAR (Search and Rescue) operations.
+
+### 6.1 System Overview
+
+The canned message system allows users to send pre-configured emergency messages without typing, using TrekLink's physical buttons for navigation and selection.
+
+**Key Features:**
+- ✅ **App-Configurable:** Messages customizable via Meshtastic app before each mission
+- ✅ **Button-Driven:** Navigate with UP/DOWN, select with MENU (no phone required)
+- ✅ **Emergency Priority:** Critical messages listed first for fastest access
+- ✅ **Fall Detection Integration:** Auto-send SOS on fall detection timeout
+- ✅ **Mesh Broadcast:** Messages sent to all nodes in range
+
+### 6.2 Button Mapping & Navigation
+
+#### Input Configuration
+- **Input Source:** `upDownEnc1` (Up/Down Encoder mode)
+- **Navigation Buttons:**
+  - UP button (GPIO 32): Scroll up in message list
+  - DOWN button (GPIO 35): Scroll down in message list
+- **Selection Button:**
+  - MENU button (GPIO 25):
+    - **Single-click:** Open canned message menu (or close if already open)
+    - **Hold (1 second):** Send highlighted message
+
+#### Usage Flow
+
+```mermaid
+stateDiagram-v2
+    [*] --> Normal: Device Ready
+    Normal --> MessageList: Click MENU
+    MessageList --> NavigateUp: Press UP
+    MessageList --> NavigateDown: Press DOWN
+    NavigateUp --> MessageList: Highlight Previous
+    NavigateDown --> MessageList: Highlight Next
+    MessageList --> SendMessage: Hold MENU (1s)
+    MessageList --> Normal: Click MENU (exit)
+    SendMessage --> [*]: Message Sent to Mesh
+```
+
+**OLED Display (Message Selection):**
+```
+┌──────────────────┐
+│ SELECT MESSAGE:  │
+│ > LOST - HELP    │ ← Highlighted (Index 1)
+│   MEDICAL ISSUE  │
+│   I'M SAFE       │
+│                  │
+│ UP/DWN  HOLD:SEND│
+└──────────────────┘
+```
+
+### 6.3 Default Message List (Emergency Prioritized)
+
+Default messages ordered by urgency for fastest SAR response:
+
+| Index | Message | Use Case |
+|-------|---------|----------|
+| **1** | **LOST - HELP** | Primary distress signal, location unknown |
+| **2** | **MEDICAL ISSUE** | Injury, medical emergency requiring aid |
+| **3** | **I'M SAFE** | Confirm safety after emergency cleared |
+| **4** | **WAIT FOR ME** | Request group to pause, slowdown |
+| **5** | **COME TO ME** | Request assistance at current location |
+| **6** | **LOW BATTERY** | Device power critical, reduce comms |
+
+**Message Format:**
+- Pipe-delimited configuration: `"LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"`
+- Maximum total length: 200 bytes (including delimiters)
+- User-customizable via Meshtastic app: Settings → Module Configuration → Canned Messages
+
+### 6.4 Fall Detection Auto-Trigger
+
+When MPU6050 detects fall pattern and 30-second countdown expires without user response:
+
+**Automatic Actions:**
+1. **Trigger Meshtastic Emergency Beacon:**
+   - Increase position broadcast frequency (e.g., every 30s instead of 15 min)
+   - Boost TX power to maximum (20 dBm for VN_433)
+   - Continue until user cancels or battery depletes
+
+2. **Send SOS Text Message:**
+   - Message: `"SOS - [Latitude], [Longitude]"` (auto-generated from GPS)
+   - Broadcast to all nodes on active channel
+   - Visible in mesh chat history for all recipients
+
+**User Override:**
+- During 30s countdown, user can cancel false alarm by pressing any button
+- After auto-send, user can manually send "I'M SAFE" to confirm recovery
+
+### 6.5 Message Configuration
+
+#### Via Meshtastic App (iOS/Android)
+1. Connect to TrekLink via Bluetooth
+2. Navigate: Settings → Module Configuration → Canned Messages
+3. Toggle "Enabled" to ON
+4. Edit "Messages" field (pipe-delimited format)
+5. Save changes (device reboots to apply)
+
+#### Via Python CLI (Advanced)
+```bash
+meshtastic --set canned_message.messages "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"
+```
+
+#### Persistence
+- Messages stored in ESP32 flash (NVS partition)
+- Survive device reboots and firmware updates
+- Default messages restored on factory reset
+
+### 6.6 Technical Implementation
+
+**Firmware Module:** `CannedMessageModule` (Meshtastic core module)
+
+**Configuration Structure:**
+```cpp
+moduleConfig.canned_message = {
+    .enabled = true,
+    .messages = "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY",
+    .inputbroker_event_cw = meshtastic_ModuleConfig_CannedMessageConfig_InputEventChar_DOWN,
+    .inputbroker_event_ccw = meshtastic_ModuleConfig_CannedMessageConfig_InputEventChar_UP,
+    .inputbroker_event_press = meshtastic_ModuleConfig_CannedMessageConfig_InputEventChar_SELECT
+};
+```
+
+**Button Event Mapping:**
+- GPIO 32 (UP) → `InputEventChar_UP`
+- GPIO 35 (DOWN) → `InputEventChar_DOWN`
+- GPIO 25 (MENU hold) → `InputEventChar_SELECT`
+
+---
+
+## 7. TrekLink Device Configuration
+
+### 7.1 Branding & Identity
+
+**Device Branding:**
+- **Product Name:** TrekLink (Meshtastic-based SAR communicator)
+- **Manufactured:** Vietnam 🇻🇳
+- **Bluetooth Name:** `TrekLink_abcd` (last 4 hex digits of ESP32 MAC)
+- **Node Name:** "TrekLink ####" (default, user-customizable via app)
+- **Splash Screen:** "TrekLink" text displayed during boot (OLED bottom center)
+
+**Regional Defaults:**
+- **LoRa Region:** VN_433 (Vietnam 433 MHz)
+- **Timezone:** ICT-7 (GMT+7, Vietnam/Indochina Time)
+- **Language:** English (Vietnamese localization deferred to Phase 3)
+
+### 7.2 LoRa Region - VN_433 (Vietnam)
+
+#### Technical Specifications
+
+**VN_433 Region Configuration:**
+- **Frequency Range:** 433.0 - 435.0 MHz
+- **Max TX Power:** 20 dBm (100 mW EIRP)
+- **Duty Cycle:** 100% (no regulatory restrictions in firmware)
+- **Channel Spacing:** 125 kHz (default for LongFast preset)
+- **Default Frequency:** 433.875 MHz (channel slot 4)
+
+**Identical to MY_433 (Malaysia) settings** - uses same protobuf enum for app compatibility.
+
+#### Legal Notice & Compliance
+
+> **⚠️ REGULATORY WARNING**
+>
+> Vietnam regulations (Circular 08/2021/TT-BTTTT) state:
+> - **433.05-434.79 MHz band requires license** for commercial/public use
+> - Max transmit power: 25-100 mW ERP (14-20 dBm)
+> - TrekLink is designed for **hobbyist/educational/emergency use**
+> 
+> **Users assume full responsibility for compliance with local RF regulations.** For commercial SAR operations, consult Vietnam Ministry of Information and Communications (MIC) for licensing requirements.
+
+#### Display & Configuration
+
+**OLED Menu Display:**
+```
+┌──────────────────┐
+│ SELECT REGION:   │
+│   EU 868         │
+│ > VN 433         │ ← Shows "VN 433"
+│   US 915         │
+│   MY 433         │
+└──────────────────┘
+```
+
+**Meshtastic App Display:**
+- Shows "Malaysia 433 MHz" (protobuf compatibility maintained)
+- No .proto modification required
+
+**User Configuration:**
+- Region is changeable via Meshtastic app if traveling outside Vietnam
+- Navigate: Settings → Radio Configuration → Region → VN 433
+- Supports all Meshtastic regions for international interoperability
+
+#### Default for TrekLink Variant
+
+TrekLink devices **boot with VN_433 pre-selected** via variant configuration:
+```cpp
+// variants/esp32/treklink/variant.h
+#define REGULATORY_LORA_REGIONCODE meshtastic_Config_LoRaConfig_RegionCode_MY_433
+```
+
+### 7.3 Timezone - GMT+7 (Vietnam)
+
+#### Configuration
+
+**Default Timezone:** ICT-7 (Indochina Time)
+- **Offset:** GMT+7 (UTC+7)
+- **POSIX String:** `"ICT-7"`
+- **No Daylight Saving:** Vietnam does not observe DST
+
+**Shared with:** Thailand, Cambodia, Laos (same timezone)
+
+#### Menu Display
+
+**OLED Timezone Menu:**
+```
+┌──────────────────┐
+│ SELECT TIMEZONE: │
+│   India (GMT+5:30)│
+│ > Vietnam (GMT+7)│ ← Shows "Vietnam (GMT+7)"
+│   Asia/Hong Kong │
+│   Australia West │
+└──────────────────┘
+```
+
+**Configuration via App:**
+- Settings → Device → Time Zone → "Vietnam (GMT+7)"
+- Alternatively: Set custom POSIX string `"ICT-7"`
+
+#### GPS Time Synchronization
+
+- GPS provides UTC time (GMT+0)
+- ESP32 RTC applies +7 hour offset for local display
+- OLED clock, logs, and message timestamps show Vietnam local time
+- Mesh network uses UTC for synchronization (timezone conversion is client-side)
+
+#### Default for TrekLink Variant
+
+```cpp
+// variants/esp32/treklink/variant.h
+#define DEFAULT_TIMEZONE "ICT-7"
+```
+
+On first boot, if no timezone configured, TrekLink initializes to GMT+7.
+
+---
+
 **Document Control:**
 - **Author:** AI Development Team
 - **Reviewed By:** [Pending User Approval]
 - **Next Review Date:** Upon Phase 1 completion
 - **Change Log:**
+  - v2.2 (2026-02-06): Added Sections 6 (Canned Messages), 7 (TrekLink Configuration - VN_433, GMT+7, Branding)
+  - v2.1 (2026-02-05): Added Section 11 - TrekLink Power Wiring (1S2P 21700)
   - v2.0 (2026-02-04): Complete redesign for Meshtastic fork with Ra-02 SPI
   - v1.2 (2026-01-28): Original proprietary E32 UART design

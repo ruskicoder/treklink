@@ -1,113 +1,65 @@
 # TrekLink Implementation Tasks (Meshtastic Fork)
 
-> **Project Code:** EXE101-G1-TREKLINK  
-> **Version:** 2.0 (Meshtastic Architecture)  
-> **Date:** February 4, 2026  
-> **Status:** READY FOR IMPLEMENTATION
-
----
-
 ## Implementation Strategy
 
 This document outlines the two-phase implementation strategy for migrating TrekLink from proprietary firmware to a Meshtastic v2.6.x fork with Ra-02 433MHz SPI radio.
 
 **Phase Priority:**
-- **Phase 1 (CRITICAL):** Working Meshtastic-compatible device (~16 hours)
-- **Phase 2 (OPTIONAL):** Custom TrekLink features (~20 hours)
+- **Phase 1 (CRITICAL):** Working Meshtastic-compatible device
+- **Phase 2 (OPTIONAL):** Custom TrekLink features
 
-If Phase 2 is incomplete, the device remains a fully functional **generic Meshtastic node**.
-
----
-
-## Phase 1: Meshtastic Base Implementation (PRIORITY)
-
-**Goal:** Create a working Meshtastic device with TrekLink hardware configuration.
-
-**Estimated Time:** 16 hours  
-**Success Criteria:** Device boots with Meshtastic, Ra-02 transmits/receives, interoperates with other Meshtastic devices.
+If Phase 2 is incomplete, the device remains a fully functional generic Meshtastic node.
 
 ---
+
+## Phase 1: Meshtastic Base Implementation
 
 ### 1. Meshtastic Repository Setup
 
 - [ ] 1.1 Clone and configure Meshtastic firmware repository
-  - Clone official Meshtastic repository: `git clone https://github.com/meshtastic/firmware.git`
-  - Checkout stable v2.6.x branch: `git checkout v2.6.x`
-  - Explore repository structure (`src/`, `variants/`, `platformio.ini`)
+  - Clone official Meshtastic repository v2.6.x branch
+  - Explore repository structure (src/, variants/, platformio.ini)
   - _Requirements: REQ-ENV-01, REQ-ENV-02_
 
 - [ ] 1.2 Create TrekLink custom variant directory
-  - Create directory: `variants/treklink_esp32/`
-  - Copy template from `variants/heltec_v1/variant.h` as starting point
-  - Study variant.h structure (pin definitions, I2C/SPI config, region settings)
+  - Create variants/treklink_esp32/ directory
+  - Copy template from variants/heltec_v1/variant.h as starting point
+  - Study variant.h structure for pin definitions and configuration
   - _Requirements: REQ-HW-04_
 
 ---
 
 ### 2. GPIO Configuration & Variant Definition
 
-- [ ] 2.1 Define Ra-02 SPI pin mappings
-  - Edit `variants/treklink_esp32/variant.h`
-  - Define LoRa SPI pins:
-    ```cpp
-    #define LORA_SCK    5
-    #define LORA_MISO   19
-    #define LORA_MOSI   27
-    #define LORA_CS     18
-    #define LORA_DIO0   26
-    #define LORA_RESET  14
-    ```
+- [ ] 2.1 Define Ra-02 SPI pin mappings in variant.h
+  - Define LoRa SPI pins (SCK, MISO, MOSI, CS, DIO0, RESET)
   - Configure SPI bus settings (VSPI, 4 MHz clock)
   - _Requirements: REQ-HW-04.1_
 
-- [ ] 2.2 Define I2C peripheral pins
-  - Add I2C pin definitions for shared OLED + MPU6050 bus:
-    ```cpp
-    #define I2C_SDA     21
-    #define I2C_SCL     22
-    ```
+- [ ] 2.2 Define I2C peripheral pins for OLED and MPU6050
+  - Add I2C pin definitions (SDA pin 21, SCL pin 22)
   - Configure I2C speed (100 kHz standard mode)
-  - Add I2C device addresses: OLED = 0x3C, MPU6050 = 0x68
+  - Add I2C device addresses: OLED (0x3C), MPU6050 (0x68)
   - _Requirements: REQ-HW-04.2, REQ-HW-04.3_
 
 - [ ] 2.3 Define GPS UART pins
-  - Add GPS Neo-6M UART1 pin mappings:
-    ```cpp
-    #define GPS_RX_PIN  16  // ESP32 TX1
-    #define GPS_TX_PIN  17  // ESP32 RX1
-    ```
+  - Add GPS Neo-6M UART1 pin mappings (RX/TX pins 16/17)
   - Configure UART baud rate (9600 for NMEA)
   - _Requirements: REQ-HW-04.2_
 
 - [ ] 2.4 Define button and notification pins
-  - Add button GPIO definitions:
-    ```cpp
-    #define BUTTON_PIN  25  // MENU (Meshtastic uses single button)
-    // Phase 2 will add BTN_SOS=34, BTN_UP=32, BTN_DOWN=35
-    ```
-  - Add notification pins:
-    ```cpp
-    #define PIN_BUZZER    33
-    #define PIN_VIBRATOR  4
-    #define LED_PIN       2
-    ```
+  - Add button GPIO definitions (MENU button pin 25 for Phase 1)
+  - Add notification pins (buzzer, vibrator, LED)
+  - Note Phase 2 will add additional buttons (SOS, UP, DOWN)
   - _Requirements: REQ-HW-04.10_
 
 - [ ] 2.5 Define power management pins
-  - Add power gating control pins:
-    ```cpp
-    #define PIN_GPS_PWR_EN    13  // GPS P-MOSFET gate
-    #define PIN_OLED_GND_EN   23  // OLED GND switch (Phase 2)
-    #define BATTERY_PIN       36  // ADC1_CH0
-    ```
+  - Add power gating control pins (GPS power enable, OLED GND, battery ADC)
   - Configure ADC attenuation for battery voltage sensing
   - _Requirements: REQ-HW-04.6, REQ-HW-04.7, REQ-HW-04.5_
 
 - [ ] 2.6 Set Meshtastic region configuration
-  - Define frequency region:
-    ```cpp
-    #define LORA_REGION  Meshtastic_Region_EU_433
-    ```
+  - Define frequency region (EU_433 for 433MHz band)
   - Verify EU 433MHz band compliance (433.05-434.79 MHz)
   - _Requirements: REQ-COM-01.1, Regulatory Compliance_
 
@@ -116,28 +68,15 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 3. PlatformIO Environment Configuration
 
 - [ ] 3.1 Add TrekLink environment to platformio.ini
-  - Open `platformio.ini` in firmware root
-  - Add custom environment after existing esp32 environments:
-    ```ini
-    [env:treklink-esp32]
-    extends = esp32_base
-    board = esp32dev
-    build_flags =
-        ${esp32_base.build_flags}
-        -D PRIVATE_HW
-        -I variants/treklink_esp32
-        -D ARDUINO_LORA_REGION=Meshtastic_Region_EU_433
-    lib_deps =
-        ${esp32_base.lib_deps}
-        jgromes/RadioLib@^6.0.0
-    ```
-  - Verify build flag syntax
+  - Create custom environment extending esp32_base
+  - Configure build flags for TrekLink variant
+  - Set LoRa region and variant-specific includes
   - _Requirements: REQ-ENV-02_
 
 - [ ] 3.2 Verify dependency resolution
-  - Check that `jgromes/RadioLib@^6.0.0` is included in lib_deps
-  - Verify Adafruit libraries for OLED (SSD1306) and IMU (MPU6050) are in esp32_base deps
-  - Run dependency check: `pio pkg list -e treklink-esp32`
+  - Check RadioLib library inclusion
+  - Verify Adafruit libraries for OLED and IMU
+  - Run dependency check command
   - _Requirements: REQ-ENV-01.3_
 
 ---
@@ -145,25 +84,16 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 4. Compilation & Firmware Build
 
 - [ ] 4.1 Build firmware for TrekLink variant
-  - Run PlatformIO build command:
-    ```bash
-    pio run -e treklink-esp32
-    ```
+  - Run PlatformIO build command for treklink-esp32 environment
   - Resolve any compilation errors (pin conflicts, missing defines)
   - Verify successful build output (firmware.bin generated)
   - _Requirements: REQ-ENV-02.1_
 
 - [ ] 4.2 Flash firmware to ESP32
   - Connect ESP32 via USB
-  - Flash compiled firmware:
-    ```bash
-    pio run -e treklink-esp32 -t upload
-    ```
-  - Monitor serial output:
-    ```bash
-    pio device monitor -b 115200
-    ```
-  - Expected boot messages: Meshtastic version, region EU_433, radio init
+  - Flash compiled firmware using PlatformIO
+  - Monitor serial output for boot messages
+  - Verify Meshtastic version, region, and radio initialization logs
   - _Requirements: REQ-ENV-02.1_
 
 ---
@@ -171,45 +101,39 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 5. Hardware Integration Testing
 
 - [ ] 5.1 Verify Ra-02 SPI initialization
-  - Connect Ra-02 module to ESP32 according to GPIO pinout (Section 2.1)
-  - Power on device, monitor serial output
-  - Expected log: `[INFO] SX1278 init success | Freq: 433.175 MHz`
-  - Test: Send test packet via Meshtastic CLI
+  - Connect Ra-02 module to ESP32 according to GPIO pinout
+  - Monitor serial output for SX1278 init success message
+  - Test packet transmission via Meshtastic CLI
   - _Requirements: REQ-HW-01.2, REQ-COM-01.1_
 
 - [ ] 5.2 Test GPS Neo-6M UART communication
-  - Connect GPS module to GPIO 16/17 (UART1)
-  - Power on GPS (ensure GPIO 13 is HIGH for P-MOSFET)
-  - Monitor NMEA sentences in serial log: `$GPGGA`, `$GPRMC`
-  - Verify GPS fix acquisition (outdoor test, <60 seconds with internal backup battery)
+  - Connect GPS module to UART1 pins
+  - Monitor NMEA sentences in serial log
+  - Verify GPS fix acquisition outdoors (under 60 seconds)
   - _Requirements: REQ-HW-01.4, REQ-NAV-01_
 
 - [ ] 5.3 Verify OLED display initialization
-  - Connect SSD1306 OLED to I2C bus (GPIO 21/22)
-  - Power on device
-  - Expected: Meshtastic splash screen displays on OLED
-  - Verify I2C address detection (0x3C)
-  - Test: Navigate Meshtastic menus using BUTTON_PIN (GPIO 25)
+  - Connect SSD1306 OLED to I2C bus
+  - Confirm Meshtastic splash screen displays
+  - Test menu navigation using MENU button
   - _Requirements: REQ-HW-02.1, REQ-UI-01_
 
 - [ ] 5.4 Test MPU6050 IMU I2C detection
   - Connect MPU6050 to I2C bus (shared with OLED)
   - Verify I2C address 0x68 detected in serial log
   - Read accelerometer/gyro test values
-  - Note: Fall detection not implemented in Phase 1, only verify hardware
   - _Requirements: REQ-HW-01.5_
 
 - [ ] 5.5 Verify button input detection
-  - Connect MENU button to GPIO 25
-  - Test: Press button, verify Meshtastic UI responds (menu navigation)
-  - Monitor debouncing behavior (no spurious inputs)
+  - Connect MENU button to designated GPIO
+  - Test button press triggers Meshtastic UI response
+  - Monitor debouncing behavior
   - _Requirements: REQ-UI-02_
 
 - [ ] 5.6 Test battery ADC voltage sensing
-  - Connect battery voltage divider to GPIO 36 (ADC1_CH0)
-  - Measure raw ADC value, convert to voltage (formula: `V_batt = ADC_value * 2 * 3.3 / 4095`)
+  - Connect battery voltage divider to ADC pin
   - Verify Meshtastic PowerStatus displays battery percentage
-  - Expected range: 6.4V (full, 2S @ 3.2V/cell) to 8.4V (charged, 2S @ 4.2V/cell)
+  - Confirm voltage reading accuracy (6.4V-8.4V range for 2S)
   - _Requirements: REQ-PWR-02_
 
 ---
@@ -217,97 +141,51 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 6. Meshtastic Interoperability Testing
 
 - [ ] 6.1 Two-device mesh packet exchange
-  - **Setup:** TrekLink device + standard Meshtastic T-Beam (or similar)
-  - **Procedure:**
-    1. Set both devices to same channel (default PSK or custom)
-    2. Send text message from T-Beam → TrekLink via Meshtastic app
-    3. Observe TrekLink OLED display received message
-  - **Expected:** Packet received within 5 seconds, RSSI/SNR displayed
+  - Test message exchange between TrekLink and standard Meshtastic device
+  - Verify packet reception within 5 seconds
+  - Confirm RSSI/SNR values displayed
   - _Requirements: REQ-COM-01, REQ-COM-02, REQ-COM-03_
 
-- [ ] 6.2 Position broadcast (SOS button placeholder)
-  - **Setup:** TrekLink with GPS fix + Meshtastic Android/iOS app
-  - **Procedure:**
-    1. Click MENU button to access Meshtastic menu
-    2. Select "Send Position" or trigger via serial command
-    3. Verify position appears on Meshtastic app map
-  - **Expected:** GPS coordinates broadcast as POSITION_APP packet
+- [ ] 6.2 Position broadcast functionality
+  - Test GPS position broadcast from TrekLink
+  - Verify position appears on Meshtastic app map
+  - Confirm POSITION_APP packet format
   - _Requirements: REQ-NAV-01, REQ-SAF-01_
 
-- [ ] 6.3 Multi-hop routing test (3+ devices)
-  - **Setup:** 3 Meshtastic devices (including TrekLink) arranged in line: A ←→ B ←→ C
-  - **Procedure:**
-    1. Device A and C out of direct range (B is relay)
-    2. Send message from A → C
-    3. Observe B rebroadcasts packet (check RSSI logs)
-  - **Expected:** Message reaches C via B relay, hop count decrements
+- [ ] 6.3 Multi-hop routing test
+  - Set up 3 devices in line configuration for relay testing
+  - Verify device B rebroadcasts packets from A to C
+  - Confirm hop count decrements correctly
   - _Requirements: REQ-COM-01.2_
 
 ---
 
-### Phase 1 Completion Checklist
-
-✅ **Phase 1 SUCCESS CRITERIA:**
-- [x] Device boots with Meshtastic firmware (serial log shows version)
-- [x] Ra-02 433MHz SPI radio transmits and receives packets
-- [x] GPS acquires fix outdoors and shares position
-- [x] OLED displays Meshtastic UI (dashboard, messages)
-- [x] MENU button navigates Meshtastic menus
-- [x] Battery voltage displayed correctly
-- [x] Device interoperates with other Meshtastic nodes (text messages, position)
-
-**If all criteria met:** Phase 1 complete, device is functional Meshtastic node.  
-**Next:** Optionally proceed to Phase 2 for custom TrekLink features.
-
----
-
-## Phase 2: TrekLink Custom Features (OPTIONAL)
-
-**Goal:** Add TrekLink differentiators (fall detection, multi-button, Silent Mode, hybrid encryption).
-
-**Estimated Time:** 20 hours  
-**Success Criteria:** Fall detection auto-SOS, Silent Mode power gating, TrekLink Private encryption working.
-
-**IMPORTANT:** Phase 2 is **OPTIONAL**. If time constraints prevent completion, Phase 1 device remains fully functional.
-
----
+## Phase 2: TrekLink Custom Features
 
 ### 7. Multi-Button Support Module
 
 - [ ] 7.1 Create TrekLinkButtonModule class
-  - **File:** `src/modules/TrekLinkButtonModule.cpp` + `.h`
-  - Extend Meshtastic `SinglePortModule` or `ProtobufModule`
+  - Create new module files extending Meshtastic module base
   - Add member variables for button states (MENU, SOS, UP, DOWN)
   - Implement debouncing logic (50ms threshold)
   - _Requirements: REQ-UI-02_
 
 - [ ] 7.2 Implement button event detection
-  - Detect click, double-click, hold events (separate logic for each button)
-  - Add interrupt handler for SOS button (GPIO 34) using `attachInterrupt()`
-  - Use `millis()` for timing (no `delay()` allowed)
+  - Detect click, double-click, hold events for each button
+  - Add interrupt handler for SOS button using attachInterrupt()
+  - Use millis() for timing (no delay() functions)
   - _Requirements: REQ-UI-02_
 
 - [ ] 7.3 Map button actions to Meshtastic functions
-  - **MENU button:**
-    - Click: Navigate Meshtastic menu
-    - Hold 1s: Toggle Silent Mode (call `toggleSilentMode()`)
-  - **SOS button:**
-    - Click: Broadcast position (call Meshtastic `sendPosition()`)
-    - Hold 3s: Trigger SOS (create CRITICAL priority packet)
-    - Double-click: Matrix request (broadcast NodeInfo query)
-  - **UP/DOWN buttons:**
-    - Navigate menu options, scroll messages
+  - Map MENU button: click for navigation, hold for Silent Mode
+  - Map SOS button: click for position, hold for emergency, double-click for Matrix request
+  - Map UP/DOWN buttons: menu scroll and message navigation
   - _Requirements: REQ-SAF-01, REQ-UI-02_
 
 - [ ] 7.4 Register module with Meshtastic module system
-  - Add TrekLinkButtonModule to `src/modules/Modules.cpp` registered modules list:
-    ```cpp
-    #ifdef TREKLINK_VARIANT
-    registerModule(&trekLinkButtonModule);
-    #endif
-    ```
-  - Define `TREKLINK_VARIANT` in variant.h
-  - Test: Verify module `setup()` and `runOnce()` are called during boot
+  - Add TrekLinkButtonModule to registered modules list
+  - Define TREKLINK_VARIANT in variant.h
+  - Verify module setup() and runOnce() are called during boot
   - _Requirements: REQ-UI-02_
 
 ---
@@ -315,29 +193,15 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 8. Silent Mode Power Gating
 
 - [ ] 8.1 Implement hardware power gate control
-  - Add function to TrekLinkButtonModule:
-    ```cpp
-    void toggleSilentMode() {
-        static bool silentMode = false;
-        silentMode = !silentMode;
-        digitalWrite(PIN_OLED_GND_EN, silentMode ? LOW : HIGH);
-        // Vibrate confirmation
-        digitalWrite(PIN_VIBRATOR, HIGH);
-        delay(200);
-        digitalWrite(PIN_VIBRATOR, LOW);
-    }
-    ```
-  - Connect OLED GND to NPN transistor (S8050-D) controlled by GPIO 23
+  - Add toggleSilentMode() function to TrekLinkButtonModule
+  - Control OLED power via NPN transistor on GPIO 23
+  - Implement vibration confirmation feedback
   - _Requirements: REQ-PWR-01.3, REQ-SEC-04_
 
 - [ ] 8.2 Test Silent Mode functionality
-  - **Setup:** TrekLink device with Phase 2 firmware
-  - **Procedure:**
-    1. Hold MENU button for 1 second
-    2. Observe OLED turns off (screen goes black)
-    3. Device vibrates confirmation
-    4. Test: Send message to device, verify vibration-only alert (no screen)
-  - **Expected:** OLED power cut via GPIO 23, device still functional
+  - Verify OLED turns off when Silent Mode activated
+  - Test haptic-only alerts when screen is off
+  - Confirm device remains functional without display
   - _Requirements: REQ-SEC-04_
 
 ---
@@ -345,239 +209,226 @@ If Phase 2 is incomplete, the device remains a fully functional **generic Meshta
 ### 9. Fall Detection Module
 
 - [ ] 9.1 Create FallDetectionModule class
-  - **File:** `src/modules/FallDetectionModule.cpp` + `.h`
-  - Extend Meshtastic `ProtobufModule<MeshPacket>`
-  - Add state machine: `MONITORING → FREEFALL → IMPACT → INACTIVITY → PRE_ALARM → SOS_TRIGGERED`
-  - Initialize Adafruit_MPU6050 library in `setup()`
+  - Create new module extending ProtobufModule
+  - Implement state machine (MONITORING → FREEFALL → IMPACT → INACTIVITY → PRE_ALARM → SOS_TRIGGERED)
+  - Add MPU6050 polling logic in runOnce()
   - _Requirements: REQ-SAF-02_
 
-- [ ] 9.2 Implement fall signature detection logic
-  - **Freefall Detection:**
-    - Monitor total acceleration: `sqrt(ax² + ay² + az²)`
-    - If < 0.3g for >500ms → FREEFALL_DETECTED
-  - **Impact Detection:**
-    - After freefall, look for total accel > 3g → IMPACT_DETECTED
-  - **Inactivity Detection:**
-    - After impact, monitor for no movement (accel ≈ 1g ± 0.2g) for 10s → INACTIVITY_DETECTED
-  - _Requirements: REQ-SAF-02.1_
+- [ ] 9.2 Implement freefall and impact detection algorithms
+  - Read accelerometer data from MPU6050
+  - Detect freefall condition (total acceleration < 0.5G for >0.5s)
+  - Detect impact (total acceleration > 3G spike)
+  - _Requirements: REQ-SAF-02.1, REQ-SAF-02.2_
 
-- [ ] 9.3 Implement Pre-Alarm state
-  - Enter PRE_ALARM after inactivity detection
-  - Display countdown on OLED: "FALL DETECTED! 30s to cancel"
-  - Sound rapid beeping alarm (buzzer)
-  - Vibrate continuously
-  - Monitor for cancellation (SOS double-click from ButtonModule)
-  - If 30 seconds elapsed without cancel → trigger auto-SOS
-  - _Requirements: REQ-SAF-02.2, REQ-SAF-02.3, REQ-SAF-02.4_
+- [ ] 9.3 Implement inactivity detection
+  - Monitor gyroscope for movement cessation
+  - Detect stillness (gyro < threshold for 10 seconds)
+  - Transition to PRE_ALARM state
+  - _Requirements: REQ-SAF-02.3_
 
-- [ ] 9.4 Integrate with Meshtastic SOS trigger
-  - Create Meshtastic packet with CRITICAL priority:
-    ```cpp
-    MeshPacket packet;
-    packet.channel = 0; // Primary channel
-    packet.priority = MeshPacket_Priority_CRITICAL;
-    packet.to = NODENUM_BROADCAST; // 0xFFFFFFFF
-    packet.decoded.portnum = PortNum_POSITION_APP;
-    packet.decoded.position = service.gps->getPosition();
-    service.sendPacket(&packet);
-    ```
-  - Activate local SOS indicators (buzzer, LED strobe)
-  - _Requirements: REQ-SAF-02.5_
+- [ ] 9.4 Implement pre-alarm countdown and auto-SOS
+  - Trigger 30-second countdown with buzzer/vibration alerts
+  - Allow user cancellation via any button press
+  - Auto-trigger Meshtastic SOS if no response
+  - _Requirements: REQ-SAF-02.4, REQ-SAF-02.5_
 
-- [ ] 9.5 Test fall detection end-to-end
-  - **Setup:** TrekLink with Phase 2 firmware, outdoor with GPS fix
-  - **Procedure:**
-    1. Drop device from 1.5m onto soft surface (mattress/cushion)
-    2. Observe fall signature detection (freefall → impact → inactivity)
-    3. Pre-alarm countdown starts (30s)
-    4. **Test A:** Double-click SOS to cancel, verify SOS not sent
-    5. **Test B:** Wait 30s without cancel, verify auto-SOS broadcast
-  - **Expected:** Nearby Meshtastic devices receive SOS with GPS coordinates
+- [ ] 9.5 Test fall detection with simulated drop
+  - Simulate fall by dropping device from height
+  - Verify pre-alarm triggers correctly
+  - Test cancellation via button press
+  - Confirm auto-SOS broadcast after timeout
   - _Requirements: REQ-SAF-02_
 
 ---
 
 ### 10. Hybrid Encryption (TrekLink Private Mode)
 
-- [ ] 10.1 Create TrekLinkProtocol class
-  - **File:** `src/mesh/TrekLinkProtocol.cpp` + `.h`
-  - Add AES-128-GCM encryption functions (use ESP32 mbedTLS library)
-  - Define custom packet payload structure:
-    ```cpp
-    struct TrekLinkPrivatePayload {
-        uint8_t version;
-        uint8_t channelId;
-        uint8_t encryptedData[64];
-        uint8_t authTag[16];
-        uint8_t nonce[12];
-    };
-    ```
+- [ ] 10.1 Create TrekLink custom protocol layer
+  - Create TrekLinkProtocol module files
+  - Add AES-128-GCM encryption functions using ESP32 mbedTLS
+  - Define custom packet payload structure
   - _Requirements: REQ-SEC-01.2, REQ-SEC-01.4_
 
 - [ ] 10.2 Implement Channel ID-based key derivation
-  - Derive AES-128-GCM key from Channel ID:
-    ```cpp
-    void deriveKey(uint8_t channelId, uint8_t *key) {
-        uint8_t seed[32];
-        memset(seed, channelId, 32); // Simple seed (production: use HMAC-SHA256)
-        memcpy(key, seed, 16); // Use first 16 bytes as AES-128 key
-    }
-    ```
+  - Create deriveKey() function for channel-specific encryption
   - Generate unique nonce per packet (timestamp + random)
   - _Requirements: REQ-SEC-01.4_
 
-- [ ] 10.3 Integrate with Meshtastic Router
-  - Hook into `Router::sendPacket()` to intercept outgoing packets
-  - If in TrekLink Private mode:
-    1. Encrypt payload with AES-128-GCM
-    2. Encapsulate in Meshtastic PortNum_PRIVATE_APP packet
-    3. Pass to Router for standard Meshtastic PKC encryption (double-layer)
-  - Hook into `Router::handleFromRadio()` to decrypt incoming packets
-  - _Requirements: REQ-SEC-01.2, REQ-SEC-01.3_
+- [ ] 10.3 Encapsulate encrypted payloads in Meshtastic packets
+  - Use PortNum_PRIVATE_APP for TrekLink private messages
+  - Maintain compatibility with Meshtastic packet format
+  - _Requirements: REQ-SEC-01.1_
 
-- [ ] 10.4 Implement mode switching (Public vs Private)
-  - Add menu option: "TrekLink Mode: Public / Private"
-  - **Public Mode:** Use only Meshtastic PKC (universal compatibility)
-  - **Private Mode:** Use Meshtastic PKC + AES-128-GCM (TrekLink devices only)
-  - **SOS Mode:** Always use Public Mode (override Private setting for SOS)
-  - _Requirements: REQ-COM-04, REQ-SEC-01.3_
+- [ ] 10.4 Implement decryption and authentication
+  - Verify GCM auth tag on received private messages
+  - Drop packets with invalid Channel ID or corrupted auth tag
+  - _Requirements: REQ-SEC-01.3_
 
-- [ ] 10.5 Test hybrid encryption
-  - **Setup:** 2x TrekLink (Phase 2) + 1x standard Meshtastic device
-  - **Procedure:**
-    1. Set both TrekLink devices to "Private Mode" with same Channel ID
-    2. Send text message from TrekLink A → TrekLink B
-    3. Observe standard Meshtastic device CANNOT decrypt message
-    4. Switch to "Public Mode", send message
-    5. Observe standard Meshtastic device CAN decrypt message
-  - **Expected:** Private messages encrypted with AES-GCM, public messages use PKC only
+- [ ] 10.5 Test TrekLink Private Mode isolation
+  - Test encrypted message exchange between two TrekLink devices
+  - Verify standard Meshtastic device cannot decrypt private messages
+  - Confirm SOS still uses Meshtastic public mode for universal interoperability
   - _Requirements: REQ-SEC-01_
 
 ---
 
-### 11. GPS Power Gating (Phase 2 Enhancement)
+### 11. GPS Power Gating
 
-- [ ] 11.1 Implement GPS power control in GPSStatus
-  - Add power gating functions to Meshtastic GPSStatus class:
-    ```cpp
-    void enableGPS() {
-        digitalWrite(PIN_GPS_PWR_EN, HIGH); // Turn on P-MOSFET
-        delay(100); // Wait for GPS boot
-    }
-    void disableGPS() {
-        digitalWrite(PIN_GPS_PWR_EN, LOW); // Cut power
-    }
-    ```
-  - Modify GPS polling loop to power-gate between updates
-  - _Requirements: REQ-PWR-01.2, REQ-PWR-03.1_
+- [ ] 11.1 Implement GPS power control logic
+  - Add GPS power enable/disable functions using GPIO 13
+  - Power off GPS during inactive periods
+  - Power on before position broadcast attempts
+  - _Requirements: REQ-PWR-01.1, REQ-PWR-01.2_
 
-- [ ] 11.2 Test GPS power gating
-  - Measure current consumption with multimeter:
-    - GPS enabled: ~45mA
-    - GPS disabled: ~5mA (ESP32 + Ra-02 standby)
-  - Verify GPS hot start works after re-enabling (internal backup battery retains almanac)
-  - _Requirements: REQ-PWR-03.1_
+- [ ] 11.2 Test GPS power cycling and fix retention
+  - Verify GPS V_BCKP maintains hot start capability
+  - Test GPS fix acquisition time after power cycle (<1 second)
+  - Measure current consumption with GPS off vs on
+  - _Requirements: REQ-PWR-01.1_
 
 ---
 
-### 12. Custom OTA Update Service (Phase 2 Optional)
+### 12. Custom OTA Update Support
 
-- [ ] 12.1 Fork Meshtastic OTAModule
-  - Copy `src/modules/OTAModule.cpp` → `TrekLinkOTAModule.cpp`
-  - Modify firmware URL to point to TrekLink repository
-  - Support dual-mode: Meshtastic base updates + TrekLink feature updates
-  - _Requirements: REQ-ENV-02.4 (from answers.md Q24)_
+- [ ] 12.1 Implement TrekLink OTA update handler
+  - Create custom OTA module leveraging ESP32 Update library
+  - Add firmware version checking logic
+  - Implement rollback mechanism for failed updates
+  - _Requirements: REQ-ENV-02.4_
 
-- [ ] 12.2 Test OTA update
-  - Deploy test firmware to GitHub Releases
-  - Trigger OTA update via Meshtastic app
-  - Verify ESP32 receives firmware, reboots with new version
+- [ ] 12.2 Test OTA firmware update
+  - Host test firmware.bin on web server or via BLE
+  - Trigger OTA update from device
+  - Verify ESP32 receives firmware and reboots with new version
   - _Requirements: REQ-ENV-02.4_
 
 ---
 
-### Phase 2 Completion Checklist
+### 13. Canned Message System Integration
 
-✅ **Phase 2 SUCCESS CRITERIA:**
-- [x] Multi-button support (MENU, SOS, UP, DOWN) functional
-- [x] Silent Mode physically cuts OLED power via GPIO 23
-- [x] Fall detection triggers auto-SOS after 30s pre-alarm
-- [x] TrekLink Private mode encrypts messages with AES-128-GCM
-- [x] Meshtastic Public mode works for SOS (universal interoperability)
-- [x] GPS power gating reduces idle current consumption
-- [x] Custom OTA updates TrekLink firmware
+- [ ] 13.1 Enable CannedMessageModule in TrekLink variant
+  - Add USE_CANNED_MESSAGE_MODULE definition to variant.h
+  - Verify module appears in compiled module list
+  - _Requirements: REQ-MSG-01.1, REQ-MSG-01.6_
 
-**If all criteria met:** Full TrekLink feature set operational.  
-**If incomplete:** Phase 1 device still functional as Meshtastic node.
+- [ ] 13.2 Configure default emergency message list
+  - Define default canned messages string in variant.h: "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"
+  - Initialize moduleConfig.canned_message.messages with defaults on first boot
+  - Test factory reset loads correct default messages
+  - _Requirements: REQ-MSG-02.1, REQ-MSG-03.3_
 
----
+- [ ] 13.3 Map button inputs to canned message navigation
+  - Configure CannedMessageModule input source as upDownEnc1
+  - Map GPIO 32 (UP button) to scroll up event
+  - Map GPIO 35 (DOWN button) to scroll down event
+  - Map GPIO 25 (MENU button hold) to select/send event
+  - Test button navigation through message list
+  - _Requirements: REQ-MSG-01.2, REQ-MSG-01.3_
 
-## Testing & Verification
+- [ ] 13.4 Test canned message transmission
+  - Verify message menu opens on MENU button click
+  - Test UP/DOWN navigation highlights correct message
+  - Test MENU hold (1s) sends highlighted message to mesh
+  - Verify message appears on receiving device within 5s
+  - _Requirements: REQ-MSG-01.5, REQ-COM-02.2_
 
-### Integration Tests (Phase 1 + Phase 2)
+- [ ] 13.5 Implement message persistence via Meshtastic NVS
+  - Test message configuration via Meshtastic app (Settings → Canned Messages)
+  - Verify custom messages persist across device reboots
+  - Test factory reset restores default messages
+  - _Requirements: REQ-MSG-03.1, REQ-MSG-03.2_
 
-- [ ] **Test 1:** Basic Meshtastic Mesh (Phase 1)
-  - 2 devices, text message exchange, verify delivery
-
-- [ ] **Test 2:** Position Broadcast (Phase 1)
-  - Outdoor GPS fix, broadcast position, verify on Meshtastic app
-
-- [ ] **Test 3:** Multi-Hop Routing (Phase 1)
-  - 3+ devices in line, verify relay behavior
-
-- [ ] **Test 4:** Fall Detection Auto-SOS (Phase 2)
-  - Drop device, verify pre-alarm, cancel test, auto-trigger test
-
-- [ ] **Test 5:** Silent Mode Stealth (Phase 2)
-  - Toggle Silent Mode, verify OLED off, vibration-only alerts
-
-- [ ] **Test 6:** TrekLink Private Encryption (Phase 2)
-  - 2x TrekLink + 1x standard Meshtastic, verify encryption isolation
-
-- [ ] **Test 7:** SOS Universal Broadcast (Phase 1 + 2)
-  - Trigger SOS from TrekLink, verify ALL Meshtastic devices receive (public mode)
-
----
-
-## Risk Mitigation
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| **Ra-02 module DOA** | Phase 1 blocked | Have spare modules, test with known-good LoRa device first |
-| **GPIO conflicts** | Hardware damage | Triple-check pinout before wiring, use multimeter to verify |
-| **Meshtastic compilation errors** | Phase 1 delays | Use stable v2.6.x branch, follow official build guide |
-| **Phase 2 timeframe overrun** | Custom features missing | **Accept Phase 1 as deliverable**, prioritize working hardware |
-| **Fall detection false positives** | User annoyance | Implement tunable sensitivity, allow user to disable feature |
+- [ ] 13.6 Integrate fall detection auto-send with SOS messaging
+  - Modify FallDetectionModule to trigger Meshtastic emergency beacon on timeout
+  - Format and send SOS text message with GPS coordinates ("SOS - [lat], [lon]")
+  - Test simulated fall → 30s countdown → beacon activation + SOS message sent
+  - _Requirements: REQ-MSG-04.1, REQ-MSG-04.2, REQ-MSG-04.3_
 
 ---
 
-## Dependency Tree
+### 14. VN_433 Region Configuration
 
-```
-Phase 1 Tasks:
-├── 1. Meshtastic Repo Setup (1.1, 1.2)
-├── 2. GPIO Configuration (2.1-2.6) → depends on 1.2
-├── 3. PlatformIO Config (3.1, 3.2) → depends on 2
-├── 4. Compilation (4.1, 4.2) → depends on 3
-├── 5. Hardware Testing (5.1-5.6) → depends on 4
-└── 6. Interoperability (6.1-6.3) → depends on 5
+- [ ] 14.1 Add VN_433 region option to OLED menu system
+  - Edit MenuApplet.cpp to add "VN 433" menu item after MY_433
+  - Edit MenuHandler.cpp to add VN_433 option mapped to MY_433 protobuf enum
+  - Test OLED region menu displays "VN 433" correctly
+  - _Requirements: REQ-ID-01.3_
 
-Phase 2 Tasks (Optional):
-├── 7. Multi-Button Module (7.1-7.4) → depends on Phase 1 complete
-├── 8. Silent Mode (8.1-8.2) → depends on 7
-├── 9. Fall Detection (9.1-9.5) → depends on 7
-├── 10. Hybrid Encryption (10.1-10.5) → depends on Phase 1
-├── 11. GPS Power Gating (11.1-11.2) → depends on Phase 1
-└── 12. Custom OTA (12.1-12.2) → depends on all Phase 2
-```
+- [ ] 14.2 Implement VN_433 menu action handler
+  - Add SET_REGION_VN_433 enum to MenuAction.h
+  - Create case handler in MenuApplet.cpp that applies MY_433 region code
+  - Test selecting VN_433 from OLED menu changes region setting
+  - _Requirements: REQ-ID-01.1, REQ-ID-01.5_
+
+- [ ] 14.3 Set VN_433 as default region for TrekLink variant
+  - Define REGULATORY_LORA_REGIONCODE as MY_433 in TrekLink variant.h
+  - Test fresh firmware flash boots with VN_433 pre-selected
+  - _Requirements: REQ-ID-01.1_
+
+- [ ] 14.4 Validate VN_433 frequency and power compliance
+  - Verify transmission frequency range: 433.0-435.0 MHz
+  - Verify maximum TX power: 20 dBm (100 mW EIRP)
+  - Test region changeable via app for international travel
+  - _Requirements: REQ-ID-01.1, REQ-ID-01.5_
 
 ---
 
-## Document Control
+### 15. Vietnam Timezone (GMT+7) Configuration
 
-- **Author:** AI Development Team
-- **Reviewed By:** [Pending User Approval]
-- **Next Review Date:** Upon Phase 1 completion
-- **Change Log:**
-  - v2.0 (2026-02-04): Complete rewrite for Meshtastic fork with two-phase strategy
-  - v1.3 (2026-02-02): Original proprietary firmware task list
+- [ ] 15.1 Add Vietnam (GMT+7) to timezone menu options
+  - Edit MenuHandler.cpp to add "Vietnam (GMT+7)" option with POSIX string "ICT-7"
+  - Add SET_TZ_VIETNAM enum to MenuAction.h
+  - Test timezone appears in OLED menu list
+  - _Requirements: REQ-ID-01.2_
+
+- [ ] 15.2 Implement Vietnam timezone action handler
+  - Create SET_TZ_VIETNAM case handler that applies "ICT-7" timezone
+  - Add "Vietnam (GMT+7)" menu item to MenuApplet.cpp
+  - Test selecting timezone from OLED menu
+  - _Requirements: REQ-ID-01.2_
+
+- [ ] 15.3 Add timezone label mapping for display
+  - Extend getTimezoneLabelFromValue() function to recognize "ICT-7"
+  - Return "Vietnam (GMT+7)" label for display
+  - Test timezone label displays correctly in device info
+  - _Requirements: REQ-ID-01.2_
+
+- [ ] 15.4 Set GMT+7 as default timezone for TrekLink variant
+  - Define DEFAULT_TIMEZONE as "ICT-7" in variant.h
+  - Modify main.cpp timezone initialization to apply variant default on first boot
+  - Test fresh firmware shows correct GMT+7 time on OLED clock
+  - _Requirements: REQ-ID-01.2_
+
+- [ ] 15.5 Validate GPS time synchronization with GMT+7 offset
+  - Test GPS provides UTC time and ESP32 RTC applies +7 hour offset
+  - Verify OLED clock displays Vietnam local time correctly
+  - Verify message timestamps show GMT+7 time
+  - _Requirements: REQ-NAV-01.5_
+
+---
+
+### 16. TrekLink Branding Implementation
+
+- [ ] 16.1 Replace Meshtastic splash screen text with TrekLink
+  - Identify splash screen rendering code (Screen.cpp or TFTDisplay.cpp)
+  - Replace "Meshtastic" string with "TrekLink" in bottom center text
+  - Test device reboot displays "TrekLink" on splash screen
+  - _Requirements: REQ-ID-02.1_
+
+- [ ] 16.2 Update Bluetooth advertising name to TrekLink
+  - Modify BluetoothUtil.cpp BLE name assignment from "Meshtastic_" to "TrekLink_"
+  - Maintain 4-digit hex suffix from device ID
+  - Test Bluetooth scan shows "TrekLink_abcd" name
+  - _Requirements: REQ-ID-02.2_
+
+- [ ] 16.3 Update default node name to TrekLink
+  - Modify NodeDB.cpp default node name from "Meshtastic ####" to "TrekLink ####"
+  - Maintain 4-digit identifier suffix
+  - Test node info in Meshtastic app shows "TrekLink ####"
+  - _Requirements: REQ-ID-02.3_
+
+- [ ] 16.4 Verify Meshtastic protocol compatibility maintained
+  - Test TrekLink can send messages to generic Meshtastic devices
+  - Test TrekLink can receive messages from generic Meshtastic devices
+  - Confirm branding changes are UI-only, no protobuf modifications
+  - _Requirements: REQ-ID-02.4, REQ-COM-01.2_

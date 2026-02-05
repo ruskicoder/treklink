@@ -262,6 +262,80 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 2. **WHEN** "Up" or "Down" buttons are pressed, **THEN** the system **SHALL** scroll through menu options or lists.
 3. **WHEN** navigating within the menu, **THEN** the SOS button single-click **SHALL** continue to broadcast a Ping (safety priority).
 
+
+---
+
+### 5. Pre-Defined Emergency Messages (REQ-MSG)
+
+#### REQ-MSG-01: Canned Message System
+**User Story:** As a SAR operator, I want quick access to pre-defined emergency messages, so that I can communicate status without typing on a small device in stressful situations.
+
+**Acceptance Criteria:**
+1. **WHEN** the user single-clicks the MENU button, **THEN** the system **SHALL** display a scrollable list of pre-configured canned messages on the OLED.
+2. **WHEN** the user presses UP or DOWN buttons while in the canned message menu, **THEN** the system **SHALL** highlight the previous or next message respectively.
+3. **WHEN** the user holds the MENU button for 1 second while a message is highlighted, **THEN** the system **SHALL** send the highlighted message as a broadcast to the mesh network.
+4. **IF** the user single-clicks MENU while in the canned message menu, **THEN** the system **SHALL** close the menu without sending a message.
+5. **WHEN** a canned message is sent, **THEN** the system **SHALL** display confirmation on OLED for 2 seconds before returning to home screen.
+6. **[Ubiquitous]** The system **SHALL** support minimum 6 pre-defined messages within the 200-byte configuration limit.
+
+#### REQ-MSG-02: Default Message List
+**User Story:** As a SAR coordinator, I want emergency-priority messages listed first, so that critical alerts can be sent fastest in life-threatening situations.
+
+**Acceptance Criteria:**
+1. **[Ubiquitous]** The system **SHALL** provide the following default canned messages in priority order:
+   - Index 1: "LOST - HELP"
+   - Index 2: "MEDICAL ISSUE" 
+   - Index 3: "I'M SAFE"
+   - Index 4: "WAIT FOR ME"
+   - Index 5: "COME TO ME"
+   - Index 6: "LOW BATTERY"
+2. **WHEN** the canned message menu is opened, **THEN** the first message ("LOST - HELP") **SHALL** be highlighted by default for fastest emergency access.
+3. **[Ubiquitous]** Emergency messages (Index 1-2) **SHALL** be positioned for access within 2 button presses maximum.
+
+#### REQ-MSG-03: Configuration & Persistence
+**User Story:** As a mission planner, I want to customize canned messages before each operation via the Meshtastic app, so that messages are relevant to the specific mission context.
+
+**Acceptance Criteria:**
+1. **WHEN** the user configures messages via Meshtastic app (Settings → Module Configuration → Canned Messages), **THEN** the system **SHALL** persist the new message list to ESP32 NVS flash.
+2. **WHEN** the device reboots, **THEN** the system **SHALL** load previously configured canned messages from flash.
+3. **IF** no custom messages are configured, **THEN** the system **SHALL** use the default message list specified in REQ-MSG-02.
+4. **WHEN** factory reset is performed, **THEN** the system **SHALL** restore default canned messages.
+5. **[Ubiquitous]** The system **SHALL** support message configuration strings up to 200 bytes total length (pipe-delimited format: "MSG1|MSG2|MSG3").
+
+#### REQ-MSG-04: Fall Detection Auto-Send
+**User Story:** As an unconscious hiker, I want the device to automatically send SOS with my coordinates if fall detection triggers and I don't respond, so that rescuers know my location.
+
+**Acceptance Criteria:**
+1. **WHEN** MPU6050 detects fall pattern (freefall → impact → stillness) AND 30-second pre-alarm countdown expires without user cancellation, **THEN** the system **SHALL** automatically trigger Meshtastic emergency beacon.
+2. **WHEN** fall detection auto-triggers, **THEN** the system **SHALL** send an SOS text message containing GPS coordinates in format: "SOS - [Latitude], [Longitude]".
+3. **WHEN** emergency beacon is active, **THEN** the system **SHALL** increase position broadcast frequency to every 30 seconds (overriding normal interval settings).
+4. **WHEN** emergency beacon is active, **THEN** the system **SHALL** set TX power to maximum (20 dBm for VN_433 region).
+5. **IF** the user presses any button during the 30-second pre-alarm countdown, **THEN** the system **SHALL** cancel auto-trigger and return to normal operation.
+6. **WHEN** auto-triggered SOS is sent, **THEN** the user **MAY** manually send "I'M SAFE" canned message to signal recovery and cancel beacon.
+
+---
+
+### 6. TrekLink Device Identity (REQ-ID)
+
+#### REQ-ID-01: Vietnamese Regional Defaults
+**User Story:** As a Vietnamese user, I want the device to default to my local region settings (VN_433 frequency, GMT+7 timezone), so that I don't need additional configuration on first boot.
+
+**Acceptance Criteria:**
+1. **WHEN** the device boots for the first time (fresh flash), **THEN** the system **SHALL** default to **VN_433 region** (433.0-435.0 MHz, 20 dBm max power, identical to MY_433 settings).
+2. **WHEN** the device boots for the first time, **THEN** the system **SHALL** default to **ICT-7 timezone** (GMT+7, Vietnam/Indochina Time).
+3. **WHEN** the user accesses LoRa region menu on OLED, **THEN** the system **SHALL** display "VN 433" as the region option.
+4. **WHEN** the user views region configuration in Meshtastic app, **THEN** the app **MAY** display "Malaysia 433 MHz" (due to shared protobuf enum for maximum compatibility).
+5. **[Ubiquitous]** The user **SHALL** be able to change region and timezone settings via Meshtastic app or OLED menu if traveling outside Vietnam.
+
+#### REQ-ID-02: TrekLink Branding
+**User Story:** As a TrekLink user, I want the device to clearly identify as "TrekLink" in Bluetooth discovery and on the splash screen, so that it's distinguishable from generic Meshtastic devices.
+
+**Acceptance Criteria:**
+1. **WHEN** the device boots, **THEN** the OLED splash screen **SHALL** display "TrekLink" text at the bottom center (replacing "Meshtastic" branding).
+2. **WHEN** the device advertises via Bluetooth, **THEN** the BLE name **SHALL** be formatted as `"TrekLink_abcd"` where `abcd` is the last 4 hexadecimal digits of the ESP32 MAC address.
+3. **WHEN** the device broadcasts NodeInfo to the mesh, **THEN** the default node name **SHALL** be "TrekLink ####" where #### is a 4-digit identifier.
+4. **[Ubiquitous]** All TrekLink branding **SHALL** maintain compatibility with Meshtastic app and mesh protocols (no protocol-breaking changes).
+
 ---
 
 ### 7. Hardware Specifications (REQ-HW)
