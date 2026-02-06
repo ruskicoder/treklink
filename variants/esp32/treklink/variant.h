@@ -27,10 +27,10 @@
 
 // User Interface Buttons
 #define BUTTON_PIN 25        // MENU button (Meshtastic default)
-// Phase 2 additional buttons:
-// #define BUTTON_PIN_SOS 34    // SOS button (input only, requires pull-up)
-// #define BUTTON_PIN_UP 32     // UP button (freed from LORA_RESET conflict)
-// #define BUTTON_PIN_DOWN 35   // DOWN button (input only, requires pull-up)
+// Phase 2 additional buttons (TrekLink custom):
+#define BUTTON_PIN_SOS 34    // SOS button (input only, requires external pull-up)
+#define BUTTON_PIN_UP 32     // UP button
+#define BUTTON_PIN_DOWN 35   // DOWN button (input only, requires external pull-up)
 
 // Battery Monitoring
 #define BATTERY_PIN 36       // ADC1_CH0 input-only (safer than GPIO 32)
@@ -60,6 +60,9 @@
 
 // Supported radio modules
 #define USE_RF95              // RFM95/SX127x (Ra-02 uses SX1278)
+
+// TrekLink variant flag (enables TrekLink-specific modules)
+#define TREKLINK_VARIANT
 
 // RX/TX control for SX127x (if external RF switch exists)
 // Uncomment if your Ra-02 module has external TX/RX switch pins

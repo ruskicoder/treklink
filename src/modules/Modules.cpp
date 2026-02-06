@@ -94,6 +94,10 @@
 #include "modules/StatusMessageModule.h"
 #endif
 
+#ifdef TREKLINK_VARIANT
+#include "modules/TrekLinkButtonModule.h"
+#endif
+
 #if defined(HAS_HARDWARE_WATCHDOG)
 #include "watchdog/watchdogThread.h"
 #endif
@@ -174,6 +178,12 @@ void setupModules()
     if (config.display.displaymode != meshtastic_Config_DisplayConfig_DisplayMode_COLOR) {
         cannedMessageModule = new CannedMessageModule();
     }
+#endif
+
+#ifdef TREKLINK_VARIANT
+    // TrekLink custom multi-button support (MENU, SOS, UP, DOWN)
+    trekLinkButtonModule = new TrekLinkButtonModule();
+    LOG_INFO("TrekLink Button Module initialized");
 #endif
 #if ARCH_PORTDUINO
     new HostMetricsModule();
