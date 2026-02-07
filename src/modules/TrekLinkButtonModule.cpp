@@ -4,6 +4,7 @@
  */
 
 #include "TrekLinkButtonModule.h"
+#include "FallDetectionModule.h"
 #include "MeshService.h"
 #include "NodeDB.h"
 #include "configuration.h"
@@ -143,6 +144,15 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
 void TrekLinkButtonModule::handleMenuButton()
 {
     unsigned long now = millis();
+
+    // Check if we need to cancel fall alarm (any button press)
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+    if (fallDetectionModule && fallDetectionModule->isInPreAlarm()) {
+        fallDetectionModule->cancelFallAlarm();
+        menuButton.clickCount = 0; // Consume the button press
+        return;
+    }
+#endif
 
     switch (menuButton.state) {
     case HOLD_DETECTED:

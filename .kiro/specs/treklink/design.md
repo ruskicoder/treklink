@@ -673,7 +673,7 @@ private:
     Adafruit_MPU6050 mpu;
     unsigned long freefallStartTime, impactTime, inactivityStartTime, prealarmStartTime;
     
-    const float FREEFALL_THRESHOLD = 0.3; // g (< 0.3g indicates freefall)
+    const float FREEFALL_THRESHOLD = 0.5; // g (< 0.5g indicates freefall)
     const float IMPACT_THRESHOLD = 3.0;   // g (> 3g indicates impact)
     const int FREEFALL_MIN_DURATION = 500; // ms
     const int INACTIVITY_DURATION = 10000; // 10 seconds
@@ -709,7 +709,7 @@ public:
         
         switch (state) {
             case MONITORING:
-                // Detect freefall (total acceleration < 0.3g)
+                // Detect freefall (total acceleration < 0.5g)
                 if (totalAccel < FREEFALL_THRESHOLD) {
                     freefallStartTime = millis();
                     state = FREEFALL_DETECTED;
@@ -794,7 +794,18 @@ private:
         packet.decoded.position = service.gps->getPosition();
         service.sendPacket(&packet);
         
-        // Activate full SOS indicators
+        // Activate SOS Morse code buzzer pattern (... --- ...)
+        // Pattern: 3 short (200ms), 3 long (600ms), 3 short (200ms), repeat every 2s
+        startSOSBuzzerPattern();
+    }
+    
+    void startSOSBuzzerPattern() {
+        // Non-blocking Morse code SOS pattern
+        // S: dot-dot-dot (3x 200ms beeps)
+        // O: dash-dash-dash (3x 600ms beeps)
+        // S: dot-dot-dot (3x 200ms beeps)
+        sosPatternStartTime = millis();
+        sosPatternIndex = 0;
     }
 };
 ```

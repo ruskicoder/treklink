@@ -191,25 +191,10 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ---
 
-### 8. Silent Mode Power Gating
-
-- [ ] 8.1 Implement hardware power gate control
-  - Add toggleSilentMode() function to TrekLinkButtonModule
-  - Control OLED power via NPN transistor on GPIO 23
-  - Implement vibration confirmation feedback
-  - _Requirements: REQ-PWR-01.3, REQ-SEC-04_
-
-- [ ] 8.2 Test Silent Mode functionality
-  - Verify OLED turns off when Silent Mode activated
-  - Test haptic-only alerts when screen is off
-  - Confirm device remains functional without display
-  - _Requirements: REQ-SEC-04_
-
----
 
 ### 9. Fall Detection Module
 
-- [ ] 9.1 Create FallDetectionModule class
+- [x] 9.1 Create FallDetectionModule class
   - Create new module extending ProtobufModule
   - Implement state machine (MONITORING → FREEFALL → IMPACT → INACTIVITY → PRE_ALARM → SOS_TRIGGERED)
   - Add MPU6050 polling logic in runOnce()
@@ -221,13 +206,13 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Detect impact (total acceleration > 3G spike)
   - _Requirements: REQ-SAF-02.1, REQ-SAF-02.2_
 
-- [ ] 9.3 Implement inactivity detection
+- [x] 9.3 Implement inactivity detection
   - Monitor gyroscope for movement cessation
   - Detect stillness (gyro < threshold for 10 seconds)
   - Transition to PRE_ALARM state
   - _Requirements: REQ-SAF-02.3_
 
-- [ ] 9.4 Implement pre-alarm countdown and auto-SOS
+- [x] 9.4 Implement pre-alarm countdown and auto-SOS
   - Trigger 30-second countdown with buzzer/vibration alerts
   - Allow user cancellation via any button press
   - Auto-trigger Meshtastic SOS if no response
@@ -240,7 +225,13 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Confirm auto-SOS broadcast after timeout
   - _Requirements: REQ-SAF-02_
 
----
+- [x] 9.6 Implement SOS Morse code buzzer pattern
+  - Replace continuous tone with Morse code SOS pattern (... --- ...)
+  - Pattern: 3 short beeps, 3 long beeps, 3 short beeps, repeat
+  - Timing: Short=200ms, Long=600ms, Gap=200ms, Repeat interval=2s
+  - _Requirements: REQ-SAF-02.6_
+
+<!-- ---
 
 ### 10. Hybrid Encryption (TrekLink Private Mode)
 
@@ -271,39 +262,8 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Confirm SOS still uses Meshtastic public mode for universal interoperability
   - _Requirements: REQ-SEC-01_
 
----
+--- -->
 
-### 11. GPS Power Gating
-
-- [ ] 11.1 Implement GPS power control logic
-  - Add GPS power enable/disable functions using GPIO 13
-  - Power off GPS during inactive periods
-  - Power on before position broadcast attempts
-  - _Requirements: REQ-PWR-01.1, REQ-PWR-01.2_
-
-- [ ] 11.2 Test GPS power cycling and fix retention
-  - Verify GPS V_BCKP maintains hot start capability
-  - Test GPS fix acquisition time after power cycle (<1 second)
-  - Measure current consumption with GPS off vs on
-  - _Requirements: REQ-PWR-01.1_
-
----
-
-### 12. Custom OTA Update Support
-
-- [ ] 12.1 Implement TrekLink OTA update handler
-  - Create custom OTA module leveraging ESP32 Update library
-  - Add firmware version checking logic
-  - Implement rollback mechanism for failed updates
-  - _Requirements: REQ-ENV-02.4_
-
-- [ ] 12.2 Test OTA firmware update
-  - Host test firmware.bin on web server or via BLE
-  - Trigger OTA update from device
-  - Verify ESP32 receives firmware and reboots with new version
-  - _Requirements: REQ-ENV-02.4_
-
----
 
 ### 13. Canned Message System Integration
 

@@ -96,6 +96,7 @@
 
 #ifdef TREKLINK_VARIANT
 #include "modules/TrekLinkButtonModule.h"
+#include "modules/FallDetectionModule.h"
 #endif
 
 #if defined(HAS_HARDWARE_WATCHDOG)
@@ -184,6 +185,12 @@ void setupModules()
     // TrekLink custom multi-button support (MENU, SOS, UP, DOWN)
     trekLinkButtonModule = new TrekLinkButtonModule();
     LOG_INFO("TrekLink Button Module initialized");
+    
+    // TrekLink fall detection with MPU6050
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+    fallDetectionModule = new FallDetectionModule();
+    LOG_INFO("TrekLink Fall Detection Module initialized");
+#endif
 #endif
 #if ARCH_PORTDUINO
     new HostMetricsModule();
