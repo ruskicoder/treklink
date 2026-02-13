@@ -62,9 +62,10 @@
 - [ ] MPU6050 IMU (I2C)
 
 **Power System (2 of each):**
-- [ ] TP5100 charger module
-- [ ] Mini360 buck converter
-- [ ] 2x 21700 battery holder
+- [ ] TP5100 charger module (1S Li-ion charging)
+- [ ] **FINAL:** TPS63802 buck-boost module (3.3V regulator) *Recommended*
+- [ ] **INTERIM:** MT3608 boost + Mini360 buck (14-day fallback) *If TPS63802 not arrived*
+- [ ] 2x 21700 battery holder (parallel configuration)
 - [ ] Power slide switch
 
 **User Interface (Per Device):**
@@ -141,26 +142,200 @@ USB-C GND ──→ TP5100 VIN-
 
 ---
 
-#### 1.3 Mini360 Buck Converter Setup
+#### 1.3 Power Regulator Setup (CHOOSE ONE)
 
-**CRITICAL: Adjust Output BEFORE Connecting ESP32**
+> **⭐ RECOMMENDED: Option A (TPS63802)** - Professional solution, 27-day battery life  
+> **⚙️ FALLBACK: Option B (MT3608 + Mini360 Cascade)** - 14-day interim, 23-day battery life
 
-**Steps:**
-1. Connect Mini360 input:
-   - IN+ to Battery Holder (+)
-   - IN- to Battery Holder (-)
+---
+
+### **OPTION A: TPS63802 Buck-Boost Module (FINAL SOLUTION)** ⭐
+
+**Why TPS63802:**
+- ✅ **Industry-leading efficiency:** 90-96%
+- ✅ **Ultra-low quiescent current:** 11µA (vs 3mA for generic)
+- ✅ **Extended battery life:** 27.7 days deep sleep (vs 4 days generic)
+- ✅ **Wide input range:** 1.3V-5.5V (uses battery down to 1.3V)
+- ✅ **Professional grade:** Texas Instruments IC
+- ✅ **Compact:** 1.4×2.3mm DFN package
+- ✅ **Used in commercial Meshtastic devices** (Nano Series)
+
+**Specifications:**
+- Input: 1.3V - 5.5V (covers full Li-ion range 3.0V - 4.2V)
+- Output: 3.3V adjustable (1.8V - 5.2V range)
+- Current: 2A max @ 3.3V (TrekLink uses ~235mA max)
+- Efficiency: 90-96% across load range
+- Quiescent: 11µA typical
+- Protection: Over-temperature, short-circuit, over-voltage
+
+**Wiring (TPS63802 Module):**
+```
+Battery (+) ──→ TPS63802 VIN+ (could add a switch here)
+Battery (-) ──→ TPS63802 GND
+
+TPS63802 VOUT ──→ 3.3V Rail (to ESP32, all modules)
+TPS63802 GND ──→ Ground Rail
+```
+
+**Configuration Steps:**
+1. **Before connecting battery:**
+   - Locate adjustment potentiometer on TPS63802 module
+   - Some modules are fixed 3.3V (no adjustment needed)
+   
+2. **Verify output voltage:**
+   - Connect battery to VIN+/GND
+   - **DO NOT connect ESP32 yet**
+   - Measure VOUT with multimeter
+   - Should read **3.30V ± 0.05V**
+   
+3. **If adjustable:**
+   - Turn potentiometer to set exactly 3.30V
+   - Clockwise = increase, Counter-clockwise = decrease
+   - Verify stability (voltage should not drift)
+   
+4. **Verification:**
+   - Battery voltage: 3.0V - 4.2V (full range)
+   - Output voltage: **3.30V** (stable)
+   - Efficiency: Module should stay cool (minimal heat)
+
+**Expected Performance:**
+- Deep sleep power: 15.011mA (ESP32 10mA + GPS 5mA + TPS63802 0.011mA)
+- Active power: ~84mA @ 3.3V
+- Battery life (10Ah): **666 hours (27.7 days)** deep sleep
+- Charge interval: **Once per month**
+
+---
+
+### **OPTION B: MT3608 + Mini360 Cascade (INTERIM SOLUTION)** ⚙️
+
+> **Use this if TPS63802 has not arrived yet (14-day shipping delay)**
+
+**Why Cascade:**
+- ✅ **Available immediately:** Use existing MT3608 stock
+- ✅ **Safe voltage regulation:** Proper 3.3V output
+- ✅ **Good battery life:** 23 days deep sleep (acceptable for testing)
+- ✅ **Works full range:** 3.0V - 4.2V battery
+- ✅ **Easy to migrate:** Simple swap to TPS63802 later
+
+**How It Works:**
+```
+Battery (3.0V-4.2V) → MT3608 Boost → 7.8V → Mini360 Buck → 3.3V
+                      Stage 1              Stage 2
+```
+
+**Efficiency Analysis:**
+- MT3608 boost efficiency: ~90% (3.7V → 7.8V)
+- Mini360 buck efficiency: ~95% (7.8V → 3.3V)
+- **Total cascade efficiency: 85.5%**
+- Power loss: ~14.5% (acceptable for interim)
+
+**Required Components:**
+- 1× MT3608 boost converter module
+- 1× Mini360 buck converter module
+- 2× 100µF electrolytic capacitors (inter-stage filtering)
+- 4× 10µF ceramic capacitors (input/output decoupling)
+
+**Circuit Diagram:**
+```
+Battery -> MT3608 -> 7.8V -> Mini360 -> 3.3V
+```
+
+**Wiring Steps:**
+
+**Step 1: Configure MT3608 (Boost Stage)**
+1. Connect MT3608 input to battery:
+   - MT3608 VIN+ ──→ Battery (+) (could add a switch here)
+   - MT3608 VIN- ──→ Battery (-)
+2. **Adjust MT3608 output to 7.8V:**
+   - Measure VOUT with multimeter
+   - Turn potentiometer clockwise to increase
+   - Set to exactly **7.80V ± 0.1V**
+   - Test with LED: should light brightly
+3. **Add 100µF capacitor** on MT3608 output:
+   - (+) leg to MT3608 VOUT
+   - (-) leg to MT3608 GND
+4. **Add 10µF ceramic caps:**
+   - One on input (VIN+/VIN-)
+   - One on output (VOUT/GND)
+
+**Step 2: Configure Mini360 (Buck Stage)**
+1. Connect Mini360 input to MT3608 output:
+   - Mini360 IN+ ──→ MT3608 VOUT (7.8V point)
+   - Mini360 IN- ──→ MT3608 GND
 2. **DO NOT connect ESP32 yet!**
-3. Measure Mini360 output voltage with multimeter
-4. Turn potentiometer screw (tiny brass screw on module):
-   - Clockwise = increase voltage
-   - Counter-clockwise = decrease voltage
-5. **Adjust to exactly 3.30V ± 0.05V**
-6. Verify voltage under no-load: Should stay stable at 3.3V
+3. **Adjust Mini360 output to 3.3V:**
+   - Measure OUT+ with multimeter
+   - Turn potentiometer counter-clockwise to decrease
+   - Set to exactly **3.30V ± 0.05V**
+   - Verify stability (should not drift)
+4. **Add 100µF capacitor** on Mini360 output:
+   - (+) leg to Mini360 OUT+
+   - (-) leg to Mini360 OUT-
+5. **Add 10µF ceramic caps:**
+   - One on input (IN+/IN-)
+   - One on output (OUT+/OUT-)
 
-**Verification:**
-- Input voltage: 3.7V (battery)
-- Output voltage: **3.30V** (measured with multimeter)
-- DO NOT exceed 3.35V (can damage ESP32!)
+**Step 3: Verification**
+1. Measure battery voltage: Should be 3.7V - 4.2V
+2. Measure MT3608 output: Should be **7.8V**
+3. Measure Mini360 output: Should be **3.30V**
+4. Check all ground connections: Must be common star point
+5. Feel modules for heat: Should be barely warm (not hot)
+
+**Expected Performance:**
+- Deep sleep power: 18.2mA @ 3.7V
+- Active power: ~96mA @ 3.7V
+- Battery life (10Ah): **551 hours (23 days)** deep sleep
+- Charge interval: **Every 3 weeks**
+
+**⚠️ CRITICAL: Capacitor Placement**
+- 100µF caps reduce ripple (DC filtering)
+- 10µF caps reduce switching noise (AC filtering)
+- MUST have correct polarity: Stripe = negative (-)
+- Place physically close to module pins
+
+---
+
+### **Migration Path: Cascade → TPS63802**
+
+**When TPS63802 arrives (Day 14):**
+
+1. **Power down device** (disconnect battery)
+2. **Remove cascade modules:**
+   - Desolder MT3608 entirely
+   - Desolder Mini360 entirely
+   - Keep 100µF cap on 3.3V rail (reuse)
+3. **Install TPS63802:**
+   - Solder VIN+ to Battery (+)
+   - Solder GND to Battery (-)
+   - Solder VOUT to 3.3V rail (where Mini360 OUT+ was)
+   - Solder GND to Ground rail
+4. **Verify output:** Should read 3.30V ± 0.05V
+5. **Reconnect ESP32:** Test all modules
+6. **Done!** Battery life now 27.7 days (from 23 days)
+
+**Saved Components (for future projects):**
+- MT3608 module (reusable for other 5V/9V/12V projects)
+- Mini360 module (reusable for 3.3V/5V regulation)
+- 100µF + 10µF caps (reusable)
+
+---
+
+### **Power Supply Comparison Summary**
+
+| Feature | TPS63802 (Final) | MT3608+Mini360 (Interim) |
+|---------|------------------|-------------------------|
+| **Efficiency** | 90-96% ⭐ | 85.5% |
+| **Quiescent** | 11µA ⭐ | 1.15mA |
+| **Battery Life** | **27.7 days** ⭐ | 23 days |
+| **Components** | 1 module ⭐ | 2 modules + 6 caps |
+| **Size** | Tiny (1.4×2.3mm) ⭐ | Large (~50×30mm) |
+| **Cost** | 31,500₫ | ~24,000₫ ⭐ |
+| **Availability** | Import (14 days) | Immediate ⭐ |
+| **Complexity** | Low ⭐ | Medium |
+| **Recommended For** | Final production ⭐ | Testing/prototyping |
+
+**Recommendation:** Use MT3608+Mini360 for immediate testing, migrate to TPS63802 for final build.
 
 ---
 

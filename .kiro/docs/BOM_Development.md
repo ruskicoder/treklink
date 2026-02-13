@@ -27,8 +27,14 @@
 |-----------|------------------|------------|------------|-------|
 | **Battery Holder** | 2x 21700 parallel spring holder | 1 | **2** | Through-hole PCB mount or external wired |
 | **Li-ion Cells** | 21700 5000mAh 3.7V (e.g., Samsung 50E) | 2 | **4** | Total 10,000mAh capacity per device |
-| **Charger Module** | TP5100 2A dual-cell Li-ion charger | 1 | **2** | Breakout board with screw terminals |
-| **Buck Converter** | Mini360 HM (DC-DC Step-Down) | 1 | **2** | Adjustable 3.3V output, sufficient for all modules |
+| **Charger Module** | TP5100 2A dual-cell Li-ion charger (1S mode) | 1 | **2** | Breakout board with screw terminals, SET pads NOT shorted |
+| **⭐ FINAL: Buck-Boost Converter** | **TPS63802 module (3.3V adjustable)** | 1 | **2** | *Recommended:* 90-96% efficiency, 11µA quiescent, 27-day battery life |
+| **⚙️ INTERIM: Boost Converter** | MT3608 module (7.8V output) | 1 | **2** | *14-day fallback only:* Use with Mini360 cascade if TPS63802 delayed |
+| **⚙️ INTERIM: Buck Converter** | Mini360 module (3.3V output) | 1 | **2** | *14-day fallback only:* Use with MT3608 cascade, 23-day battery life |
+| **Cascade Capacitors (Interim Only)** | 100µF electrolytic (25V) | 2 | **4** | Inter-stage filtering for MT3608+Mini360 cascade |
+| **Cascade Capacitors (Interim Only)** | 10µF ceramic (50V) | 4 | **8** | Input/output decoupling for cascade configuration |
+
+> **Note:** Purchase TPS63802 for final build (31,500₫/pc = 63,000₫ for 2pcs). Use MT3608+Mini360 cascade as temporary 14-day fallback if TPS63802 has shipping delay. Cascade components can be reused for other projects after migration to TPS63802.
 
 ---
 
