@@ -1,7 +1,9 @@
 /*
  * TrekLink Button Module Header
- * Handles multi-button input for TrekLink device (MENU, SOS, UP, DOWN)
- * Supports click, double-click, and hold events
+ * Handles SOS button for TrekLink device emergency functions
+ * 
+ * Note: UP/DOWN/MENU navigation buttons are handled by TrekLinkButtonInput
+ * which integrates with Meshtastic's InputBroker system.
  */
 
 #pragma once
@@ -10,15 +12,12 @@
 #include "concurrency/OSThread.h"
 #include "configuration.h"
 
-// Button GPIO definitions (from variant.h)
-#define BTN_MENU 25  // MENU button
+// SOS Button GPIO (from variant.h)
 #define BTN_SOS 34   // SOS button (input-only, requires external pull-up)
-#define BTN_UP 32    // UP button  
-#define BTN_DOWN 35  // DOWN button (input-only, requires external pull-up)
 
 // Timing constants (milliseconds)
 #define DEBOUNCE_MS 50
-#define HOLD_THRESHOLD_MS 1000
+#define HOLD_THRESHOLD_MS 3000  // 3 seconds for SOS trigger/cancel
 #define DOUBLE_CLICK_WINDOW_MS 300
 
 class TrekLinkButtonModule : public SinglePortModule, private concurrency::OSThread
@@ -43,12 +42,11 @@ private:
         int clickCount;
     };
 
-    ButtonInfo menuButton;
-    ButtonInfo sosButton;
-    ButtonInfo upButton;
-    ButtonInfo downButton;
-
-    bool silentModeActive;
+    ButtonInfo sosButton;  // SOS button only
+    
+    // SOS state tracking
+    bool sosActive;
+    unsigned long sosStartTime;
     
     // Vibration feedback timing (non-blocking)
     bool vibrationActive;
@@ -59,20 +57,14 @@ private:
     void initButton(ButtonInfo &btn, uint8_t pin);
     void updateButton(ButtonInfo &btn);
     
-    // ISR handlers (must be static for attachInterrupt)
-    static void IRAM_ATTR menuButtonISR();
+    // ISR handler for SOS button (must be static for attachInterrupt)
     static void IRAM_ATTR sosButtonISR();
-    static void IRAM_ATTR upButtonISR();
-    static void IRAM_ATTR downButtonISR();
     
-    void handleMenuButton();
     void handleSOSButton();
-    void handleUpButton();
-    void handleDownButton();
-    void toggleSilentMode();
     void broadcastPosition();
     void triggerSOS();
     void activateSOSAlarms();
+    void cancelSOS();
 
 protected:
     virtual int32_t runOnce() override;
@@ -84,7 +76,7 @@ public:
     virtual bool wantUIFrame() override { return false; }
     
     // Accessors
-    bool isSilentModeActive() const { return silentModeActive; }
+    bool isSOSActive() const { return sosActive; }
 };
 
 extern TrekLinkButtonModule *trekLinkButtonModule;

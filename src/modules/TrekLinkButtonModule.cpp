@@ -1,6 +1,8 @@
 /*
  * TrekLink Button Module Implementation
- * Multi-button support for TrekLink device
+ * SOS button support for TrekLink device emergency functions
+ * 
+ * Note: UP/DOWN/MENU navigation is handled by TrekLinkButtonInput + InputBroker
  */
 
 #include "TrekLinkButtonModule.h"
@@ -10,20 +12,22 @@
 #include "configuration.h"
 #include "main.h"
 
+#if !MESHTASTIC_EXCLUDE_GPS
+#include "modules/PositionModule.h"
+#endif
+
 TrekLinkButtonModule *trekLinkButtonModule;
 
 TrekLinkButtonModule::TrekLinkButtonModule()
     : SinglePortModule("TrekLinkButton", meshtastic_PortNum_PRIVATE_APP), 
       OSThread("TrekLinkButton"),
-      silentModeActive(false),
+      sosActive(false),
+      sosStartTime(0),
       vibrationActive(false),
       vibrationStartTime(0)
 {
-    // Initialize button structures
-    initButton(menuButton, BTN_MENU);
+    // Initialize SOS button only
     initButton(sosButton, BTN_SOS);
-    initButton(upButton, BTN_UP);
-    initButton(downButton, BTN_DOWN);
 }
 
 void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
@@ -37,51 +41,21 @@ void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
     btn.lastDebounceTime = 0;
     btn.clickCount = 0;
 
-    // Configure GPIO with interrupts
+    // Configure GPIO - Input-only pin (34) requires external pull-up
     pinMode(pin, INPUT);
     
-    // Input-only pins (34, 35) require external pull-ups
-    // Other pins use internal pull-downs
-    if (pin != 34 && pin != 35) {
-        pinMode(pin, INPUT_PULLDOWN);
-    }
+    // Attach interrupt (CHANGE trigger for both press and release)
+    attachInterrupt(digitalPinToInterrupt(pin), sosButtonISR, CHANGE);
     
-    // Attach interrupt for all buttons (CHANGE trigger for both press and release)
-    attachInterrupt(digitalPinToInterrupt(pin), 
-                    (pin == BTN_MENU) ? menuButtonISR :
-                    (pin == BTN_SOS) ? sosButtonISR :
-                    (pin == BTN_UP) ? upButtonISR : downButtonISR,
-                    CHANGE);
+    LOG_INFO("TrekLinkButton: SOS button initialized on GPIO %d", pin);
 }
 
-// ISR handlers (IRAM_ATTR for ESP32)
-void IRAM_ATTR TrekLinkButtonModule::menuButtonISR() {
-    if (trekLinkButtonModule) {
-        trekLinkButtonModule->menuButton.currentReading = digitalRead(BTN_MENU);
-        trekLinkButtonModule->menuButton.lastDebounceTime = millis();
-    }
-}
-
+// ISR handler for SOS button (IRAM_ATTR for ESP32)
 void IRAM_ATTR TrekLinkButtonModule::sosButtonISR() {
     if (trekLinkButtonModule) {
         // Input-only pin, invert logic (LOW = pressed with pull-up)
         trekLinkButtonModule->sosButton.currentReading = !digitalRead(BTN_SOS);
         trekLinkButtonModule->sosButton.lastDebounceTime = millis();
-    }
-}
-
-void IRAM_ATTR TrekLinkButtonModule::upButtonISR() {
-    if (trekLinkButtonModule) {
-        trekLinkButtonModule->upButton.currentReading = digitalRead(BTN_UP);
-        trekLinkButtonModule->upButton.lastDebounceTime = millis();
-    }
-}
-
-void IRAM_ATTR TrekLinkButtonModule::downButtonISR() {
-    if (trekLinkButtonModule) {
-        // Input-only pin, invert logic (LOW = pressed with pull-up)
-        trekLinkButtonModule->downButton.currentReading = !digitalRead(BTN_DOWN);
-        trekLinkButtonModule->downButton.lastDebounceTime = millis();
     }
 }
 
@@ -130,47 +104,9 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
         break;
 
     case WAIT_DOUBLE_CLICK:
-        if (pressed && (now - btn.releaseTime) < DOUBLE_CLICK_WINDOW_MS) {
-            btn.clickCount++;
-            btn.pressTime = now;
-            btn.state = PRESS_DETECTED;
-        } else if ((now - btn.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
+        if ((now - btn.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
             btn.state = IDLE;
         }
-        break;
-    }
-}
-
-void TrekLinkButtonModule::handleMenuButton()
-{
-    unsigned long now = millis();
-
-    // Check if we need to cancel fall alarm (any button press)
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
-    if (fallDetectionModule && fallDetectionModule->isInPreAlarm()) {
-        fallDetectionModule->cancelFallAlarm();
-        menuButton.clickCount = 0; // Consume the button press
-        return;
-    }
-#endif
-
-    switch (menuButton.state) {
-    case HOLD_DETECTED:
-        // Hold 1s: Toggle Silent Mode
-        toggleSilentMode();
-        menuButton.state = IDLE;
-        break;
-
-    case IDLE:
-        if (menuButton.clickCount == 1 && (now - menuButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-            // Single click: Navigate Meshtastic menu (handled by UI system)
-            // This is a placeholder - actual navigation happens in UIRenderer
-            LOG_DEBUG("MENU: Single click - navigate menu");
-            menuButton.clickCount = 0;
-        }
-        break;
-
-    default:
         break;
     }
 }
@@ -179,26 +115,45 @@ void TrekLinkButtonModule::handleSOSButton()
 {
     unsigned long now = millis();
 
+    // CRITICAL: Fall alarm cancellation - ONLY SOS hold 3s can cancel
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+    if (fallDetectionModule && fallDetectionModule->isInPreAlarm()) {
+        if (sosButton.state == HOLD_DETECTED && (now - sosButton.pressTime) >= HOLD_THRESHOLD_MS) {
+            LOG_INFO("SOS Button: Cancelling fall alarm (hold 3s)");
+            fallDetectionModule->cancelFallAlarm();
+            sosButton.state = IDLE;
+            sosButton.clickCount = 0;
+            return;
+        }
+    }
+#endif
+
     switch (sosButton.state) {
     case HOLD_DETECTED:
-        // Hold 3s: Trigger SOS
-        if ((now - sosButton.pressTime) > 3000) {
-            triggerSOS();
+        // Hold 3s: Trigger SOS or Cancel active SOS
+        if ((now - sosButton.pressTime) >= HOLD_THRESHOLD_MS) {
+            if (!sosActive) {
+                LOG_WARN("SOS Button: Triggering SOS mode (hold 3s)");
+                triggerSOS();
+                sosActive = true;
+                sosStartTime = now;
+            } else {
+                LOG_INFO("SOS Button: Cancelling SOS mode (hold 3s)");
+                cancelSOS();
+                sosActive = false;
+            }
             sosButton.state = IDLE;
         }
         break;
 
     case IDLE:
+        // Single click: Broadcast position (ping)
         if (sosButton.clickCount == 1 && (now - sosButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-            // Single click: Broadcast position
+            LOG_INFO("SOS Button: Broadcasting position (single click)");
             broadcastPosition();
             sosButton.clickCount = 0;
-        } else if (sosButton.clickCount == 2 && (now - sosButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-            // Double click: Matrix request (broadcast NodeInfo query)
-            LOG_INFO("SOS: Double-click - broadcast NodeInfo request");
-            // TODO: Implement matrix request
-            sosButton.clickCount = 0;
         }
+        // NOTE: SOS double-click removed per user directive
         break;
 
     default:
@@ -206,53 +161,13 @@ void TrekLinkButtonModule::handleSOSButton()
     }
 }
 
-void TrekLinkButtonModule::handleUpButton()
-{
-    unsigned long now = millis();
-
-    if (upButton.state == IDLE && upButton.clickCount == 1 && (now - upButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-        // Single click: Scroll up (handled by UI/CannedMessage module)
-        LOG_DEBUG("UP: Single click - scroll up");
-        upButton.clickCount = 0;
-    }
-}
-
-void TrekLinkButtonModule::handleDownButton()
-{
-    unsigned long now = millis();
-
-    if (downButton.state == IDLE && downButton.clickCount == 1 && (now - downButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-        // Single click: Scroll down (handled by UI/CannedMessage module)
-        LOG_DEBUG("DOWN: Single click - scroll down");
-        downButton.clickCount = 0;
-    }
-}
-
-void TrekLinkButtonModule::toggleSilentMode()
-{
-    silentModeActive = !silentModeActive;
-    
-    LOG_INFO("Silent Mode: %s", silentModeActive ? "ON" : "OFF");
-    
-    // Note: Hardware power gating (GPIO 23) removed in design
-    // Silent mode now handled by Meshtastic firmware power management
-    // Just provide vibration feedback
-    
-#ifdef PIN_VIBRATOR
-    // Non-blocking vibration: turn on, will be turned off in runOnce() after 200ms
-    digitalWrite(PIN_VIBRATOR, HIGH);
-    vibrationStartTime = millis();
-    vibrationActive = true;
-#endif
-}
-
 void TrekLinkButtonModule::broadcastPosition()
 {
     LOG_INFO("Broadcasting position (ping)");
     
-    // Use Meshtastic's position broadcast service
-    if (service && service->sendPosition) {
-        service->sendPosition();
+    // Delegate to PositionModule for position broadcast
+    if (positionModule) {
+        positionModule->sendOurPosition();
     }
 }
 
@@ -261,24 +176,23 @@ void TrekLinkButtonModule::triggerSOS()
     LOG_WARN("SOS TRIGGERED!");
     
     // Create high-priority emergency packet
-    meshtastic_MeshPacket *packet = allocMeshPacket();
+    meshtastic_MeshPacket *packet = allocDataPacket();
     packet->channel = 0; // Primary channel (broadcast)
-    packet->priority = meshtastic_MeshPacket_Priority_CRITICAL;
+    packet->priority = meshtastic_MeshPacket_Priority_RELIABLE;
     packet->want_ack = false; // No ACK for broadcast emergency
     
     // Set packet type to position with SOS flag
     packet->decoded.portnum = meshtastic_PortNum_POSITION_APP;
     
-    // Populate position data from GPS
+    // Use node's current position (already updated by GPS/PositionModule)
     meshtastic_Position pos = meshtastic_Position_init_default;
-#if !MESHTASTIC_EXCLUDE_GPS
-    if (gps && gps->isConnected) {
-        pos.latitude_i = gps->latitude;
-        pos.longitude_i = gps->longitude;
-        pos.altitude = gps->altitude;
-        pos.time = gps->getTime();
+    meshtastic_NodeInfoLite *node = nodeDB->getNodeNum() ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
+    if (node && nodeDB->hasValidPosition(node)) {
+        pos.latitude_i = node->position.latitude_i;
+        pos.longitude_i = node->position.longitude_i;
+        pos.altitude = node->position.altitude;
+        pos.time = node->position.time;  // Use node's existing time
     }
-#endif
     
     // Encode position into packet
     packet->decoded.payload.size = pb_encode_to_bytes(
@@ -319,6 +233,24 @@ void TrekLinkButtonModule::activateSOSAlarms()
 #endif
 }
 
+void TrekLinkButtonModule::cancelSOS()
+{
+    LOG_INFO("SOS CANCELLED");
+    
+#ifdef PIN_BUZZER
+    ledcWrite(0, 0); // Stop buzzer
+    ledcDetachPin(PIN_BUZZER);
+#endif
+
+#ifdef LED_PIN
+    digitalWrite(LED_PIN, LOW);
+#endif
+
+#ifdef PIN_VIBRATOR
+    digitalWrite(PIN_VIBRATOR, LOW);
+#endif
+}
+
 int32_t TrekLinkButtonModule::runOnce()
 {
 #ifdef PIN_VIBRATOR
@@ -329,17 +261,9 @@ int32_t TrekLinkButtonModule::runOnce()
     }
 #endif
 
-    // Poll all buttons
-    updateButton(menuButton);
+    // Poll SOS button only (UP/DOWN/MENU handled by TrekLinkButtonInput)
     updateButton(sosButton);
-    updateButton(upButton);
-    updateButton(downButton);
-
-    // Handle button actions
-    handleMenuButton();
     handleSOSButton();
-    handleUpButton();
-    handleDownButton();
 
     // Run at 100Hz (10ms interval) for responsive button detection
     return 10;

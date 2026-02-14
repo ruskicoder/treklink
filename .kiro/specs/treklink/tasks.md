@@ -200,7 +200,7 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Add MPU6050 polling logic in runOnce()
   - _Requirements: REQ-SAF-02_
 
-- [ ] 9.2 Implement freefall and impact detection algorithms
+- [x] 9.2 Implement freefall and impact detection algorithms
   - Read accelerometer data from MPU6050
   - Detect freefall condition (total acceleration < 0.5G for >0.5s)
   - Detect impact (total acceleration > 3G spike)
@@ -230,6 +230,13 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Pattern: 3 short beeps, 3 long beeps, 3 short beeps, repeat
   - Timing: Short=200ms, Long=600ms, Gap=200ms, Repeat interval=2s
   - _Requirements: REQ-SAF-02.6_
+
+- [ ] 9.7 Integrate fall detection auto-send with emergency messaging
+  - When fall detection auto-triggers after 30s timeout, send SOS text message
+  - Format message as: "SOS - FALL DETECTED" with GPS coordinates
+  - Broadcast as high-priority emergency message to mesh network
+  - Test simulated fall → 30s countdown → SOS message sent with coordinates
+  - _Requirements: REQ-MSG-04.1, REQ-MSG-04.2, REQ-MSG-04.3_
 
 <!-- ---
 
@@ -265,7 +272,47 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 --- -->
 
 
-### 13. Canned Message System Integration
+### 11. Global Button Navigation Implementation
+
+- [ ] 11.1 Create TrekLinkButtonInput for 3-button navigation only
+  - Create src/input/TrekLinkButtonInput.h/cpp extending UpDownInterruptBase
+  - Hardcode GPIO: UP=32, DOWN=35, MENU=25 (NOT SOS)
+  - Map to InputBroker events (ALT_PRESS for UP, USER_PRESS for DOWN, SELECT for MENU)
+  - Use #ifdef TREKLINK_VARIANT guard for conditional compilation
+  - _Requirements: REQ-UI-01_
+
+- [ ] 11.2 Integrate TrekLinkButtonInput with InputBroker
+  - Add initialization in InputBroker::Init() after trackball setup
+  - Register as observable input source
+  - Test UP/DOWN/MENU work globally in Meshtastic UI
+  - _Requirements: REQ-UI-01_
+
+- [ ] 11.3 Keep SOS button (GPIO 34) in TrekLinkButtonModule unchanged
+  - SOS button STAYS in TrekLinkButtonModule for emergency-only functions
+  - GPIO 34, ISR (sosButtonISR), custom polling (NOT InputBroker)
+  - Remove UP/DOWN/MENU from TrekLinkButtonModule (now in TrekLinkButtonInput)
+  - Add cancelSOS() function (hold 3s during SOS cancels)
+  - Update fall alarm cancel (ONLY SOS hold 3s, not any button)
+  - _Requirements: REQ-SAF-01_
+
+- [ ] 11.4 Remove obsolete code from TrekLinkButtonModule
+  - Remove menuButton, upButton, downButton structures and ISRs
+  - Remove toggleSilentMode() function and silent mode variables
+  - Remove SOS double-click handler (matrix request)
+  - Update runOnce() to poll SOS button only
+  - _Requirements: Code cleanup_
+
+- [ ] 11.5 Test both button systems independently
+  - Navigation: UP/DOWN in menus, MENU selects items (all contexts)
+  - SOS: single-click ping, hold 3s triggers, hold 3s cancels
+  - Verify no cross-interference between systems
+  - Verify MENU hold does nothing (silent mode removed)
+  - Verify SOS double-click does nothing (removed)
+  - _Requirements: REQ-UI-01, REQ-SAF-01_
+
+---
+
+### 13. Canned Message Presets Configuration
 
 - [ ] 13.1 Enable CannedMessageModule in TrekLink variant
   - Add USE_CANNED_MESSAGE_MODULE definition to variant.h
@@ -278,34 +325,22 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Test factory reset loads correct default messages
   - _Requirements: REQ-MSG-02.1, REQ-MSG-03.3_
 
-- [ ] 13.3 Map button inputs to canned message navigation
-  - Configure CannedMessageModule input source as upDownEnc1
-  - Map GPIO 32 (UP button) to scroll up event
-  - Map GPIO 35 (DOWN button) to scroll down event
-  - Map GPIO 25 (MENU button hold) to select/send event
-  - Test button navigation through message list
-  - _Requirements: REQ-MSG-01.2, REQ-MSG-01.3_
-
-- [ ] 13.4 Test canned message transmission
+- [ ] 13.3 Test canned message transmission
   - Verify message menu opens on MENU button click
-  - Test UP/DOWN navigation highlights correct message
-  - Test MENU hold (1s) sends highlighted message to mesh
+  - Test UP/DOWN navigation highlights correct message (uses global buttons from Task 11)
+  - Test MENU click sends highlighted message to mesh
   - Verify message appears on receiving device within 5s
   - _Requirements: REQ-MSG-01.5, REQ-COM-02.2_
 
-- [ ] 13.5 Implement message persistence via Meshtastic NVS
+- [ ] 13.4 Test message persistence via Meshtastic NVS
   - Test message configuration via Meshtastic app (Settings → Canned Messages)
   - Verify custom messages persist across device reboots
   - Test factory reset restores default messages
   - _Requirements: REQ-MSG-03.1, REQ-MSG-03.2_
 
-- [ ] 13.6 Integrate fall detection auto-send with SOS messaging
-  - Modify FallDetectionModule to trigger Meshtastic emergency beacon on timeout
-  - Format and send SOS text message with GPS coordinates ("SOS - [lat], [lon]")
-  - Test simulated fall → 30s countdown → beacon activation + SOS message sent
-  - _Requirements: REQ-MSG-04.1, REQ-MSG-04.2, REQ-MSG-04.3_
 
 ---
+
 
 ### 14. VN_433 Region Configuration
 

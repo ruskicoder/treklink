@@ -29,6 +29,10 @@
 #include "input/kbMatrixImpl.h"
 #endif
 
+#ifdef TREKLINK_VARIANT
+#include "input/TrekLinkButtonInput.h"
+#endif
+
 #if HAS_BUTTON || defined(ARCH_PORTDUINO)
 #include "input/ButtonThread.h"
 
@@ -380,7 +384,17 @@ void InputBroker::Init()
         trackballInterruptImpl1->init(TB_DOWN, TB_UP, TB_LEFT, TB_RIGHT, TB_PRESS);
     }
 #endif
+#ifdef TREKLINK_VARIANT
+    // TrekLink 3-button navigation (UP, DOWN, MENU)
+    // SOS button is handled separately in TrekLinkButtonModule
+    trekLinkButtonInput = new TrekLinkButtonInput();
+    if (!trekLinkButtonInput->init()) {
+        delete trekLinkButtonInput;
+        trekLinkButtonInput = nullptr;
+    }
+#endif
 #ifdef INPUTBROKER_EXPRESSLRSFIVEWAY_TYPE
     expressLRSFiveWayInput = new ExpressLRSFiveWay();
 #endif
 }
+

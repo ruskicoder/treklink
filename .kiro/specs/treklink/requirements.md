@@ -104,7 +104,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **Acceptance Criteria:**
 1. **IF** GPS lock is unavailable (HDOP > 5), **THEN** the system **SHALL** fallback to RSSI Triangulation (if >2 nodes are available with known positions).
 2. **IF** RSSI Triangulation is not possible, **THEN** the system **SHALL** use Dead Reckoning: `Last_Known_Pos + (Compass_Heading * Est_Speed * Time_Delta)` using MPU6050 data.
-3. **WHEN** the user Double Clicks the SOS button (in normal state), **THEN** the system **SHALL** broadcast a "Location Ping Request" to all nodes to update the Map Matrix.
+3. **WHEN** the user Single Clicks the SOS button (in normal state), **THEN** the system **SHALL** broadcast a position ping (current location) to all nodes.
 
 #### REQ-NAV-03: Distance & Direction Display
 **User Story:** As a user, I want to see how far away my group members are, so that I can gauge travel time.
@@ -125,7 +125,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 1. **WHEN** the SOS button is Held for 3 seconds, **THEN** the system **SHALL** trigger the SOS Routine: Broadcast High Priority SOS Packet at maximum TX power + Loud Buzzer + Strobing LED.
 2. **WHEN** the SOS button is Clicked once, **THEN** the system **SHALL** broadcast the current location (Ping) without triggering the audio alarm.
 3. **WHILE** in SOS mode, **THEN** the system **SHALL** transmit continuously for 1 minute (Phase 1: Immediate), then switch to pulsed interval transmission (every 30 seconds, Phase 2: Beacon) indefinitely until cancelled or battery depletion.
-4. **WHEN** the user Holds the SOS button for 5 seconds during active SOS, **THEN** the system **SHALL** cancel the SOS mode and confirm with a long vibration.
+4. **WHEN** the user Holds the SOS button for 3 seconds during active SOS, **THEN** the system **SHALL** cancel the SOS mode, stop all alarms, and confirm with a long vibration.
 5. **IF** the system triggers an SOS, **THEN** it **SHALL** bypass Adaptive Power Control and transmit at maximum power to prioritize reach over stealth.
 
 #### REQ-SAF-02: Fall Detection
@@ -135,7 +135,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 1. **WHILE** the device is ON, **THEN** the system **SHALL** continuously monitor MPU6050 data for a specific fall signature: Freefall (>0.5s) followed by High Impact (>3G) followed by Inactivity (10s).
 2. **WHEN** a Fall signature is detected, **THEN** the system **SHALL** enter a "Pre-Alarm" state with haptic/visual warning for 30 seconds.
 3. **WHILE** in "Pre-Alarm" state, **THEN** the system **SHALL** sound a local alarm and vibrate continuously.
-4. **IF** the user Double Clicks the SOS button during the Pre-Alarm State, **THEN** the system **SHALL** cancel the auto-SOS and confirm as "Safe."
+4. **IF** the user Holds the SOS button for 3 seconds during the Pre-Alarm State, **THEN** the system **SHALL** cancel the auto-SOS and confirm as "Safe."
 5. **IF** the user does NOT cancel the alarm within 30 seconds, **THEN** the system **SHALL** automatically trigger the full SOS Routine.
 
 ---
@@ -168,16 +168,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 2. **IF** a packet with a duplicate Msg ID is received (replay attack), **THEN** the system **SHALL** drop the packet immediately.
 3. **IF** a packet is injected by a rogue device without the correct Channel Key, **THEN** it **SHALL** fail AES decryption (CRC mismatch) and be discarded silently.
 
-#### REQ-SEC-04: Stealth / Silent Mode (Physical Security)
-**User Story:** As a user, I want to operate the device without making noise or light, so that I remain undetected.
-
-**Acceptance Criteria:**
-1. **WHEN** the user initiates "Silent Mode" (Hold MENU button for 1 second), **THEN** the system **SHALL** disable the OLED display, Status LED, and Buzzer.
-2. **WHILE** in Silent Mode, **THEN** the system **SHALL** use haptic vibration for all alerts and confirmations.
-3. **WHILE** in Silent Mode, **THEN** the system **SHALL** logically disable visual outputs even if buttons are pressed (preventing light leakage).
-4. **WHEN** the user Holds the MENU button for 1 second again, **THEN** the system **SHALL** exit Silent Mode and return to Active Mode.
-
 ---
+
 
 ### 5. Power Management (REQ-PWR)
 
@@ -273,8 +265,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **Acceptance Criteria:**
 1. **WHEN** the user single-clicks the MENU button, **THEN** the system **SHALL** display a scrollable list of pre-configured canned messages on the OLED.
 2. **WHEN** the user presses UP or DOWN buttons while in the canned message menu, **THEN** the system **SHALL** highlight the previous or next message respectively.
-3. **WHEN** the user holds the MENU button for 1 second while a message is highlighted, **THEN** the system **SHALL** send the highlighted message as a broadcast to the mesh network.
-4. **IF** the user single-clicks MENU while in the canned message menu, **THEN** the system **SHALL** close the menu without sending a message.
+3. **WHEN** the user single-clicks the MENU button while a message is highlighted, **THEN** the system **SHALL** send the highlighted message as a broadcast to the mesh network.
+4. **IF** the user navigates away from the canned message menu (e.g., timeout or back action), **THEN** the system **SHALL** close the menu without sending a message.
 5. **WHEN** a canned message is sent, **THEN** the system **SHALL** display confirmation on OLED for 2 seconds before returning to home screen.
 6. **[Ubiquitous]** The system **SHALL** support minimum 6 pre-defined messages within the 200-byte configuration limit.
 

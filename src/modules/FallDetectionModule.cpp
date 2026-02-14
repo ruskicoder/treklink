@@ -155,24 +155,23 @@ void FallDetectionModule::triggerAutoSOS()
     LOG_CRIT("FallDetection: AUTO-SOS TRIGGERED!");
     
     // Create high-priority emergency packet (same as manual SOS)
-    meshtastic_MeshPacket *packet = allocMeshPacket();
+    meshtastic_MeshPacket *packet = allocDataPacket();
     packet->channel = 0; // Primary channel (broadcast)
-    packet->priority = meshtastic_MeshPacket_Priority_CRITICAL;
+    packet->priority = meshtastic_MeshPacket_Priority_RELIABLE;
     packet->want_ack = false; // No ACK for broadcast emergency
     
     // Set packet type to position with SOS flag
     packet->decoded.portnum = meshtastic_PortNum_POSITION_APP;
     
-    // Populate position data from GPS
+    // Use node's current position (already updated by GPS/PositionModule)
     meshtastic_Position pos = meshtastic_Position_init_default;
-#if !MESHTASTIC_EXCLUDE_GPS
-    if (gps && gps->isConnected) {
-        pos.latitude_i = gps->latitude;
-        pos.longitude_i = gps->longitude;
-        pos.altitude = gps->altitude;
-        pos.time = gps->getTime();
+    meshtastic_NodeInfoLite *node = nodeDB->getNodeNum() ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
+    if (node && nodeDB->hasValidPosition(node)) {
+        pos.latitude_i = node->position.latitude_i;
+        pos.longitude_i = node->position.longitude_i;
+        pos.altitude = node->position.altitude;
+        pos.time = node->position.time;  // Use node's existing time
     }
-#endif
     
     // Encode position into packet
     packet->decoded.payload.size = pb_encode_to_bytes(
