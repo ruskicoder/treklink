@@ -154,21 +154,13 @@ void FallDetectionModule::triggerAutoSOS()
 {
     LOG_CRIT("FallDetection: AUTO-SOS TRIGGERED!");
     
-    //=== 1. Send Position Packet ===
-    meshtastic_MeshPacket *posPacket = allocDataPacket();
-    posPacket->channel = 0; // Primary channel (broadcast)
-    posPacket->priority = meshtastic_MeshPacket_Priority_RELIABLE;
-    posPacket->want_ack = false; // No ACK for broadcast emergency
-    
-    posPacket->decoded.portnum = meshtastic_PortNum_POSITION_APP;
-    
-    // Use node's current position (already updated by GPS/PositionModule)
+    // Extract node position once for both position and text packets
     meshtastic_Position pos = meshtastic_Position_init_default;
     meshtastic_NodeInfoLite *node = nodeDB->getNodeNum() ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
     
+    bool hasPosition = false;
     float latitude = 0.0f;
     float longitude = 0.0f;
-    bool hasPosition = false;
     
     if (node && nodeDB->hasValidPosition(node)) {
         pos.latitude_i = node->position.latitude_i;
@@ -176,11 +168,18 @@ void FallDetectionModule::triggerAutoSOS()
         pos.altitude = node->position.altitude;
         pos.time = node->position.time;
         
-        // Convert to float for text message
-        latitude = node->position.latitude_i * 1e-7;
-        longitude = node->position.longitude_i * 1e-7;
+        // Convert integer coordinates to float for text message
+        latitude = pos.latitude_i * 1e-7;
+        longitude = pos.longitude_i * 1e-7;
         hasPosition = true;
     }
+    
+    //=== 1. Send Position Packet ===
+    meshtastic_MeshPacket *posPacket = allocDataPacket();
+    posPacket->channel = 0; // Primary channel (broadcast)
+    posPacket->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    posPacket->want_ack = false; // No ACK for broadcast emergency
+    posPacket->decoded.portnum = meshtastic_PortNum_POSITION_APP;
     
     // Encode and send position packet
     posPacket->decoded.payload.size = pb_encode_to_bytes(
@@ -199,19 +198,24 @@ void FallDetectionModule::triggerAutoSOS()
     textPacket->channel = 0;
     textPacket->priority = meshtastic_MeshPacket_Priority_RELIABLE;
     textPacket->want_ack = false;
-    
     textPacket->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
     
-    // Format message: "SOS - FALL DETECTED [Lat], [Lon]"
+    // Format per REQ-MSG-04.2: "SOS - [Latitude], [Longitude]"
     char message[100];
+    size_t msgLen;
     if (hasPosition) {
-        snprintf(message, sizeof(message), "SOS - FALL DETECTED %.6f, %.6f", latitude, longitude);
+        msgLen = snprintf(message, sizeof(message), "SOS - [%.6f], [%.6f]", latitude, longitude);
     } else {
-        snprintf(message, sizeof(message), "SOS - FALL DETECTED (No GPS)");
+        msgLen = snprintf(message, sizeof(message), "SOS - [No GPS]");
     }
     
-    memcpy(textPacket->decoded.payload.bytes, message, strlen(message));
-    textPacket->decoded.payload.size = strlen(message);
+    // Safety: ensure we don't exceed buffer (snprintf returns would-be length)
+    if (msgLen >= sizeof(message)) {
+        msgLen = sizeof(message) - 1;
+    }
+    
+    memcpy(textPacket->decoded.payload.bytes, message, msgLen);
+    textPacket->decoded.payload.size = msgLen;
     
     if (service) {
         service->sendToMesh(textPacket);
