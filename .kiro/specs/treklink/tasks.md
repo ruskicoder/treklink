@@ -231,7 +231,7 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Timing: Short=200ms, Long=600ms, Gap=200ms, Repeat interval=2s
   - _Requirements: REQ-SAF-02.6_
 
-- [ ] 9.7 Integrate fall detection auto-send with emergency messaging
+- [x] 9.7 Integrate fall detection auto-send with emergency messaging
   - When fall detection auto-triggers after 30s timeout, send SOS text message
   - Format message as: "SOS - FALL DETECTED" with GPS coordinates
   - Broadcast as high-priority emergency message to mesh network
@@ -274,20 +274,20 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ### 11. Global Button Navigation Implementation
 
-- [ ] 11.1 Create TrekLinkButtonInput for 3-button navigation only
+- [x] 11.1 Create TrekLinkButtonInput for 3-button navigation only
   - Create src/input/TrekLinkButtonInput.h/cpp extending UpDownInterruptBase
   - Hardcode GPIO: UP=32, DOWN=35, MENU=25 (NOT SOS)
   - Map to InputBroker events (ALT_PRESS for UP, USER_PRESS for DOWN, SELECT for MENU)
   - Use #ifdef TREKLINK_VARIANT guard for conditional compilation
   - _Requirements: REQ-UI-01_
 
-- [ ] 11.2 Integrate TrekLinkButtonInput with InputBroker
+- [x] 11.2 Integrate TrekLinkButtonInput with InputBroker
   - Add initialization in InputBroker::Init() after trackball setup
   - Register as observable input source
   - Test UP/DOWN/MENU work globally in Meshtastic UI
   - _Requirements: REQ-UI-01_
 
-- [ ] 11.3 Keep SOS button (GPIO 34) in TrekLinkButtonModule unchanged
+- [x] 11.3 Keep SOS button (GPIO 34) in TrekLinkButtonModule unchanged
   - SOS button STAYS in TrekLinkButtonModule for emergency-only functions
   - GPIO 34, ISR (sosButtonISR), custom polling (NOT InputBroker)
   - Remove UP/DOWN/MENU from TrekLinkButtonModule (now in TrekLinkButtonInput)
@@ -295,7 +295,7 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - Update fall alarm cancel (ONLY SOS hold 3s, not any button)
   - _Requirements: REQ-SAF-01_
 
-- [ ] 11.4 Remove obsolete code from TrekLinkButtonModule
+- [x] 11.4 Remove obsolete code from TrekLinkButtonModule
   - Remove menuButton, upButton, downButton structures and ISRs
   - Remove toggleSilentMode() function and silent mode variables
   - Remove SOS double-click handler (matrix request)
