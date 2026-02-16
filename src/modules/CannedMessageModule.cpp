@@ -2391,7 +2391,14 @@ bool CannedMessageModule::saveProtoForModule()
  */
 void CannedMessageModule::installDefaultCannedMessageModuleConfig()
 {
+#ifdef CANNED_MESSAGE_MODULE_MESSAGES_DEFAULT
+    // Use variant-specific defaults (e.g., TrekLink emergency messages)
+    strncpy(cannedMessageModuleConfig.messages, CANNED_MESSAGE_MODULE_MESSAGES_DEFAULT,
+            sizeof(cannedMessageModuleConfig.messages));
+#else
+    // Default Meshtastic messages if variant doesn't define custom defaults
     strncpy(cannedMessageModuleConfig.messages, "Hi|Bye|Yes|No|Ok", sizeof(cannedMessageModuleConfig.messages));
+#endif
 }
 
 /**

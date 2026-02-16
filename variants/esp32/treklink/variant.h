@@ -64,6 +64,16 @@
 // TrekLink variant flag (enables TrekLink-specific modules)
 #define TREKLINK_VARIANT
 
+// ============================
+//   Canned Message Defaults
+// ============================
+
+// Default emergency message list (REQ-MSG-02.1)
+// Format: Pipe-delimited string (|), max 800 bytes total (CANNED_MESSAGE_MODULE_MESSAGES_SIZE)
+// Priority order: Emergency messages first for fastest access (REQ-MSG-02.3)
+#define CANNED_MESSAGE_MODULE_MESSAGES_DEFAULT \
+    "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"
+
 // RX/TX control for SX127x (if external RF switch exists)
 // Uncomment if your Ra-02 module has external TX/RX switch pins
 // #define RF95_RXEN 14
