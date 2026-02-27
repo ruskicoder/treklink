@@ -443,7 +443,7 @@ class RadioInterface {
 
 **TrekLink Configuration:**
 ```cpp
-// In variants/treklink_esp32/variant.h
+// In variants/esp32/treklink/variant.h
 #define LORA_REGION Meshtastic_Region_EU_433
 #define LORA_SCK 5
 #define LORA_MISO 19

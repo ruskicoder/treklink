@@ -79,12 +79,8 @@ graph TB
         ESP32 --> LED
     end
 
-    subgraph Power_Gating
-        MOSFET_GPS[P-MOSFET<br/>GPS Power]
-        NPN_OLED[NPN Transistor<br/>OLED GND]
-        ESP32 -- GPIO 13 --> MOSFET_GPS --> GPS
-        ESP32 -- GPIO 23 --> NPN_OLED --> OLED
-    end
+    %% Power Gating REMOVED - Meshtastic firmware handles power management
+    %% GPIO 13 and GPIO 23 are no longer used for hardware power gating
 ```
 
 ---
@@ -255,7 +251,7 @@ BOTTOM:
 │  - CSMA (Carrier Sense Multiple Access)                 │
 ├─────────────────────────────────────────────────────────┤
 │                    Hardware Abstraction                 │
-│  - TrekLink Variant (variants/treklink_esp32/variant.h) │
+│  - TrekLink Variant (variants/esp32/treklink/variant.h) │
 │  - GPIO definitions, I2C/SPI bus config                 │
 │  - Button/LED/Power gate pin mappings                   │
 └─────────────────────────────────────────────────────────┘
@@ -333,7 +329,7 @@ If Phase 2 is implemented, add these modules:
 1. **[Phase 1]** Support **Meshtastic standard message types**: TEXT, POSITION_APP, NODEINFO_APP.
 2. **WHEN** SOS is triggered, **THEN** broadcast **Meshtastic POSITION_APP packet** for universal compatibility.
 3. **[Phase 2 Optional]** Support custom TrekLink encrypted messages via PRIVATE_APP.
-4. **WHEN** "Matrix Check" is requested (SOS double-click), **THEN** query all nodes for position updates.
+4. **[DEFERRED]** ~~SOS double-click Matrix Check~~ — removed from MVP per user directive.
 
 ---
 
@@ -360,7 +356,7 @@ If Phase 2 is implemented, add these modules:
 1. **[Phase 2 Optional]** WHILE device is ON, **THEN** monitor MPU6050 for fall signature (freefall > 0.5s, impact > 3G, inactivity 10s).
 2. **WHEN** fall is detected, **THEN** enter "Pre-Alarm" with haptic/visual warning for 30 seconds.
 3. **WHILE** in Pre-Alarm, **THEN** sound alarm and vibrate continuously.
-4. **IF** user Double Clicks SOS during Pre-Alarm, **THEN** cancel auto-SOS.
+4. **IF** user presses any button during Pre-Alarm, **THEN** cancel auto-SOS.
 5. **IF** user does NOT cancel within 30s, **THEN** automatically trigger Meshtastic SOS.
 
 ---
@@ -401,7 +397,7 @@ If Phase 2 is implemented, add these modules:
 1. **[Phase 1]** The system **SHALL** display **Meshtastic BaseUI** on boot.
 2. **WHEN** Meshtastic UI is active, **THEN** display: Signal strength, Node count, Battery %, GPS status, Clock.
 3. **[Phase 2 Optional]** The system **MAY** switch to custom TrekLink UI (dashboard, map, message presets).
-4. **WHEN** Silent Mode is activated (MENU hold 1s), **THEN** power-gate OLED via GPIO 23.
+4. **WHEN** Silent Mode is activated (MENU hold 1s), **THEN** the system **SHALL** disable OLED display via Meshtastic screen power management.
 
 ---
 
@@ -423,8 +419,8 @@ If Phase 2 is implemented, add these modules:
 
 **Acceptance Criteria:**
 1. **[Phase 1]** Use **Meshtastic auto power management** (light sleep between CAD).
-2. **WHEN** GPS is not actively needed, **THEN** power-gate via GPIO 13 (P-MOSFET).
-3. **[Phase 2]** WHEN Silent Mode is active, **THEN** cut OLED power via GPIO 23 (NPN switch).
+2. **WHEN** GPS is not actively needed, **THEN** use Meshtastic GPS power management (firmware-controlled sleep).
+3. **[REMOVED]** ~~Hardware power gating (GPIO 13/23) removed~~ — Meshtastic firmware handles power saving via sleep modes.
 4. **WHILE** battery voltage drops below 3.2V/cell, **THEN** enter deep sleep and disable non-critical peripherals.
 
 ---
@@ -480,8 +476,8 @@ Encryption: Meshtastic PKC + TrekLink AES-128-GCM
 
 **Tasks:**
 1. Fork Meshtastic v2.6.x repository
-2. Create custom variant `variants/treklink_esp32/variant.h`
-3. Configure PlatformIO environment (`env:treklink-esp32`)
+2. Create custom variant `variants/esp32/treklink/variant.h`
+3. Configure PlatformIO environment (`env:treklink`)
 4. Wire Ra-02 SPI module according to GPIO pinout
 5. Flash firmware and verify Ra-02 radio initialization
 6. Test GPS Neo-6M UART communication
@@ -640,20 +636,20 @@ cd firmware
 git checkout v2.6.x  # Use latest stable v2.6.x release
 
 # Create TrekLink variant directory
-mkdir -p variants/treklink_esp32
-cp variants/heltec_v1/variant.h variants/treklink_esp32/
+mkdir -p variants/esp32/treklink
+cp variants/heltec_v1/variant.h variants/esp32/treklink/
 
 # Edit variant.h with TrekLink GPIO pinout (see Section 3.2)
-nano variants/treklink_esp32/variant.h
+nano variants/esp32/treklink/variant.h
 
 # Add TrekLink environment to platformio.ini
 # (see implementation_plan.md Section 3 for full config)
 
 # Build firmware
-pio run -e treklink-esp32
+pio run -e treklink
 
 # Flash to ESP32
-pio run -e treklink-esp32 -t upload
+pio run -e treklink -t upload
 
 # Monitor serial output
 pio device monitor -b 115200
@@ -683,12 +679,12 @@ pio device monitor -b 115200
 1. User encounters injury while hiking
 2. User holds SOS button for 3 seconds
 3. Device vibrates confirmation (3 short pulses)
-4. Buzzer sounds loud alarm, LED strobes red
+4. Buzzer sounds loud alarm, LED strobes (blue, built-in GPIO 2)
 5. High-priority Meshtastic POSITION_APP packet broadcast to all nodes
 6. Packet contains GPS coordinates, battery level, node name
 7. Nearby Meshtastic devices receive SOS, display alert on screen
 8. Rescue team uses coordinates to navigate to injured hiker
-9. After rescue, user holds SOS for 5s to cancel alert
+9. After rescue, user holds SOS for 3s to cancel alert
 
 ---
 

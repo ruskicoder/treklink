@@ -22,7 +22,7 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
   - _Requirements: REQ-ENV-01, REQ-ENV-02_
 
 - [x] 1.2 Create TrekLink custom variant directory
-  - Create variants/treklink_esp32/ directory
+  - Create variants/esp32/treklink/ directory
   - Copy template from variants/heltec_v1/variant.h as starting point
   - Study variant.h structure for pin definitions and configuration
   - _Requirements: REQ-HW-04_
@@ -84,7 +84,7 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 ### 4. Compilation & Firmware Build
 
 - [x] 4.1 Build firmware for TrekLink variant
-  - Run PlatformIO build command for treklink-esp32 environment
+  - Run PlatformIO build command for treklink environment
   - Resolve any compilation errors (pin conflicts, missing defines)
   - Verify successful build output (firmware.bin generated)
   - _Requirements: REQ-ENV-02.1_

@@ -10,7 +10,6 @@
  * - GPS Neo-6M (UART1): TX=16, RX=17
  * - Buttons: MENU=25, SOS=34, UP=32, DOWN=35
  * - Buzzer=33, Vibrator=4, LED=2
- * - Power Gates: GPS_PWR=13, OLED_GND=23
  * - Battery ADC: GPIO 36 (ADC1_CH0 input-only)
  */
 

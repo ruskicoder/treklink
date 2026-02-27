@@ -73,8 +73,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 1. **[Phase 1]** The system **SHALL** support **Meshtastic standard message types**: Text (PRIVATE), Position (POSITION_APP), and NodeInfo (NODEINFO_APP).
 2. **WHEN** the user triggers SOS, **THEN** the system **SHALL** broadcast a **Meshtastic standard POSITION_APP packet** to ensure interoperability with all Meshtastic devices.
 3. **[Phase 2 Optional]** The system **MAY** support custom TrekLink message types (encrypted private messages, preset broadcasts) using PortNum_PRIVATE_APP.
-4. **WHEN** a "Matrix Check" is requested (double-click SOS), **THEN** the system **SHALL** send position broadcasts and record received NodeInfo to build a neighbor list.
-5. **[Ubiquitous]** SOS messages **SHALL** have highest priority and **SHALL** use Meshtastic's critical message flag.
+4. **[DEFERRED]** ~~Matrix Check (double-click SOS)~~ — removed from MVP per user directive.
+5. **[Ubiquitous]** SOS messages **SHALL** have highest priority and **SHALL** use Meshtastic's maximum priority flag (`meshtastic_MeshPacket_Priority_MAX`).
 
 #### REQ-COM-04: Rebroadcast Modes
 **User Story:** As a Group Leader, I want to control how my device relays messages, so that I can prioritize local group communication or extend network range.
@@ -135,7 +135,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 1. **WHILE** the device is ON, **THEN** the system **SHALL** continuously monitor MPU6050 data for a specific fall signature: Freefall (>0.5s) followed by High Impact (>3G) followed by Inactivity (10s).
 2. **WHEN** a Fall signature is detected, **THEN** the system **SHALL** enter a "Pre-Alarm" state with haptic/visual warning for 30 seconds.
 3. **WHILE** in "Pre-Alarm" state, **THEN** the system **SHALL** sound a local alarm and vibrate continuously.
-4. **IF** the user Holds the SOS button for 3 seconds during the Pre-Alarm State, **THEN** the system **SHALL** cancel the auto-SOS and confirm as "Safe."
+4. **IF** the user presses any button (SOS, MENU, UP, or DOWN) during the Pre-Alarm State, **THEN** the system **SHALL** cancel the auto-SOS and return to normal operation.
 5. **IF** the user does NOT cancel the alarm within 30 seconds, **THEN** the system **SHALL** automatically trigger the full SOS Routine.
 
 ---
@@ -193,9 +193,9 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **User Story:** As a developer, I want to cut power to unused sensors, so that leakage current is eliminated.
 
 **Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** implement Power Gating via P-Channel MOSFETs (AO3401) configured as High-Side Switches.
-2. **WHEN** the GPS is not required (during sleep), **THEN** the system **SHALL** disable the GPS MOSFET (cutting main VCC to Neo-6M, while V_BCKP remains connected).
-3. **WHEN** the OLED is off, **THEN** the system **SHALL** disable the OLED MOSFET.
+1. **[REMOVED]** ~~Hardware Power Gating (P-MOSFET on GPIO 13/23)~~ — removed from TrekLink. Meshtastic firmware handles power saving via sleep modes and GPS power management.
+2. **WHEN** the GPS is not required (during sleep), **THEN** Meshtastic firmware **SHALL** manage GPS power via software sleep modes (V_BCKP remains connected for hot start).
+3. **WHEN** the OLED is off, **THEN** Meshtastic firmware **SHALL** disable the OLED display via I2C command.
 4. **WHEN** the device is switched OFF via the physical slide switch, **THEN** the system **SHALL** enter a hard-off state (<10µA consumption) but allow charging circuitry to function.
 
 #### REQ-PWR-04: Low Power Indicators (LPI)
@@ -223,9 +223,9 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 | Side Button (MENU) | Click | Menu / Back: Opens main menu or goes back. |
 | Side Button (MENU) | Hold (1s) | Toggle Silent Mode. |
 | SOS Button | Click (1x) | Ping: Broadcast current location. |
-| SOS Button | Double Click | Matrix Request (Normal) / Confirm Safe (Fall State). |
+| SOS Button | Double Click | ~~Matrix Request~~ **DEFERRED** — removed from MVP. |
 | SOS Button | Hold (3s) | SOS: Trigger Emergency Broadcast. |
-| SOS Button | Hold (5s) | Cancel active SOS. |
+| SOS Button | Hold (3s) | Cancel active SOS. |
 | Up / Down | Click | Navigation in Menu / Scroll Messages. |
 | Up + Down | Combo | Quick Reply: Selects first preset message. |
 
@@ -376,8 +376,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED SSD1306 0x3C, MPU6050 0x68).
 4. **MPU6050:** Uses I2C polling via SDA/SCL (GPIO 21/22). INT pin is not connected (fall detection uses software polling).
 5. **Battery ADC:** → GPIO 36 (Input Only, ADC1_CH0 for voltage sensing).
-6. **GPS P-MOSFET Gate Control:** → GPIO 13 (via S8050-D gate driver transistor).
-7. **OLED GND Switch Control:** → GPIO 23 (S8050-D NPN for low-side switching, Silent Mode).
+6. ~~**GPS P-MOSFET Gate Control:** → GPIO 13~~ — **REMOVED**. Meshtastic manages GPS power via firmware.
+7. ~~**OLED GND Switch Control:** → GPIO 23~~ — **REMOVED**. Meshtastic manages OLED via I2C.
 8. **Buzzer:** → GPIO 33 (Passive buzzer, PWM output).
 9. **Vibrator:** → GPIO 4 (Motor via NPN transistor).
 10. **Buttons:** BTN_MENU → GPIO 25, BTN_SOS → GPIO 34, BTN_UP → GPIO 32, BTN_DOWN → GPIO 35.
@@ -400,8 +400,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 **User Story:** As a user, I want quick access to common messages without typing.
 
 **Acceptance Criteria:**
-1. **[Ubiquitous]** The system **SHALL** support a minimum of 8 preset messages stored in non-volatile memory.
-2. **The default preset messages SHALL include:** "Safe", "Help", "Wait", "Lost", "Moving North", "Moving South", "Stop", "Come to Me".
+1. **[Ubiquitous]** The system **SHALL** support a minimum of 6 preset messages stored in non-volatile memory.
+2. **The default preset messages SHALL be** as defined in REQ-MSG-02: "LOST - HELP", "MEDICAL ISSUE", "I'M SAFE", "WAIT FOR ME", "COME TO ME", "LOW BATTERY".
 3. **WHEN** the user selects a preset, **THEN** the system **SHALL** broadcast it with the current GPS coordinates (if enabled).
 
 ---
@@ -422,8 +422,8 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 
 **Acceptance Criteria (Updated for Meshtastic):**
 1. **The system SHALL** use **PlatformIO** as the build system with `esp32_base` platform.
-2. **The project configuration SHALL** include a custom `env:treklink-esp32` environment in `platformio.ini`.
-3. **The custom board variant SHALL** be defined in `variants/treklink_esp32/variant.h` with all GPIO mappings.
+2. **The project configuration SHALL** include a custom `env:treklink` environment in `platformio.ini`.
+3. **The custom board variant SHALL** be defined in `variants/esp32/treklink/variant.h` with all GPIO mappings.
 4. **The system SHALL** compile with Meshtastic dependencies including `jgromes/RadioLib@^6.0.0`.
 
 #### REQ-ENV-03: Simulation
