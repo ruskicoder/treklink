@@ -7,6 +7,7 @@
 
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<Adafruit_MPU6050.h>)
 
+#include "BuzzerManager.h"
 #include "MeshService.h"
 #include "NodeDB.h"
 #include "configuration.h"
@@ -14,33 +15,25 @@
 
 FallDetectionModule *fallDetectionModule;
 
+// F12: Static LUT definition (declared in header)
+constexpr bool FallDetectionModule::SOS_LUT[];
+
 FallDetectionModule::FallDetectionModule()
     : SinglePortModule("FallDetection", meshtastic_PortNum_PRIVATE_APP),
       OSThread("FallDetection"),
       currentState(MONITORING),
+      mpuInitialized(false),  // F5: Lazy init
       freefallStartTime(0),
       impactTime(0),
       inactivityStartTime(0),
       prealarmStartTime(0),
       lastAlarmBeepTime(0),
+      isBeepOn(false),        // F3: Alarm robustness
       sosPatternStartTime(0),
-      sosPatternIndex(0),
       sosBuzzerOn(false)
 {
-    // Initialize MPU6050
-    Wire.begin(I2C_SDA, I2C_SCL);
-    
-    if (!mpu.begin(0x68)) {
-        LOG_ERROR("FallDetection: MPU6050 initialization failed!");
-        return;
-    }
-    
-    // Configure MPU6050 for fall detection
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);  // ±8g range for impact detection
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);        // ±500°/s for rotation detection
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);     // Low-pass filter to reduce noise
-    
-    LOG_INFO("FallDetection: Module initialized, state=MONITORING");
+    // F5: MPU6050 init moved to runOnce() for lazy initialization
+    LOG_INFO("FallDetection: Module created, will init MPU6050 in runOnce()");
 }
 
 void FallDetectionModule::transitionToState(FallState newState)
@@ -86,63 +79,88 @@ void FallDetectionModule::cancelFallAlarm()
     }
 }
 
+// F21: SOS exit path — cancels auto-SOS (called by SOS hold 3s)
+void FallDetectionModule::cancelAutoSOS()
+{
+    if (currentState == SOS_TRIGGERED) {
+        LOG_INFO("FallDetection: Auto-SOS cancelled by user");
+
+#ifdef PIN_BUZZER
+        BuzzerManager::instance().write(0);
+        BuzzerManager::instance().release(OWNER_FALL);
+#endif
+
+#ifdef PIN_VIBRATOR
+        digitalWrite(PIN_VIBRATOR, LOW);
+#endif
+
+#ifdef LED_PIN
+        digitalWrite(LED_PIN, LOW);
+#endif
+
+        sosBuzzerOn = false;
+        transitionToState(MONITORING);
+    }
+}
+
 void FallDetectionModule::activatePreAlarm()
 {
     LOG_WARN("FallDetection: PRE-ALARM activated - 30s countdown");
     
-    // Activate buzzer alarm (rapid beeping pattern)
 #ifdef PIN_BUZZER
-    ledcAttachPin(PIN_BUZZER, 0);
-    ledcSetup(0, 2700, 8); // 2.7kHz, 8-bit resolution
-    ledcWrite(0, 128); // 50% duty cycle (will beep via updateAlarmFeedback())
+    // F4: Use BuzzerManager instead of raw LEDC
+    BuzzerManager::instance().acquire(OWNER_FALL);
+    BuzzerManager::instance().write(128); // Initial beep
 #endif
     
     // Activate vibration alarm
 #ifdef PIN_VIBRATOR
     digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
+
+    isBeepOn = true; // F3: Track beep state
 }
 
 void FallDetectionModule::deactivatePreAlarm()
 {
     LOG_INFO("FallDetection: Pre-alarm deactivated");
     
-    // Stop buzzer
 #ifdef PIN_BUZZER
-    ledcWrite(0, 0);
-    ledcDetachPin(PIN_BUZZER);
+    // F4: Use BuzzerManager
+    BuzzerManager::instance().write(0);
+    BuzzerManager::instance().release(OWNER_FALL);
 #endif
     
     // Stop vibration
 #ifdef PIN_VIBRATOR
     digitalWrite(PIN_VIBRATOR, LOW);
 #endif
+
+    isBeepOn = false;
 }
 
+// F3: Robust alarm feedback with explicit isBeepOn state tracking
 void FallDetectionModule::updateAlarmFeedback()
 {
-    unsigned long now = millis();
-    
-    // Beep every second during pre-alarm
-    if ((now - lastAlarmBeepTime) >= ALARM_BEEP_INTERVAL) {
-        lastAlarmBeepTime = now;
-        
-#ifdef PIN_BUZZER
-        // Pulse buzzer (200ms on, 800ms off)
-        ledcWrite(0, 128);
-        // Note: No delay() - will turn off on next iteration
-#endif
+    unsigned long elapsed = millis() - lastAlarmBeepTime;
 
+    if (elapsed >= ALARM_BEEP_INTERVAL) {
+        // Start new beep cycle
+        lastAlarmBeepTime = millis();
+        isBeepOn = true;
+
+#ifdef PIN_BUZZER
+        BuzzerManager::instance().write(128);
+#endif
 #ifdef PIN_VIBRATOR
-        // Pulse vibration
         digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
-    }
-    
-    // Turn off after 200ms pulse
-    if ((now - lastAlarmBeepTime) >= 200) {
+    } else if (isBeepOn && elapsed >= 200) {
+        // End beep after 200ms (200ms on, 800ms off)
+        isBeepOn = false;
+
 #ifdef PIN_BUZZER
-        ledcWrite(0, 0);
+        BuzzerManager::instance().write(0);
 #endif
 #ifdef PIN_VIBRATOR
         digitalWrite(PIN_VIBRATOR, LOW);
@@ -177,7 +195,7 @@ void FallDetectionModule::triggerAutoSOS()
     //=== 1. Send Position Packet ===
     meshtastic_MeshPacket *posPacket = allocDataPacket();
     posPacket->channel = 0; // Primary channel (broadcast)
-    posPacket->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    posPacket->priority = meshtastic_MeshPacket_Priority_MAX; // F19: MAX priority
     posPacket->want_ack = false; // No ACK for broadcast emergency
     posPacket->decoded.portnum = meshtastic_PortNum_POSITION_APP;
     
@@ -196,7 +214,7 @@ void FallDetectionModule::triggerAutoSOS()
     //=== 2. Send SOS Text Message (Task 9.7, REQ-MSG-04.2) ===
     meshtastic_MeshPacket *textPacket = allocDataPacket();
     textPacket->channel = 0;
-    textPacket->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    textPacket->priority = meshtastic_MeshPacket_Priority_MAX; // F19: MAX priority
     textPacket->want_ack = false;
     textPacket->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
     
@@ -224,93 +242,73 @@ void FallDetectionModule::triggerAutoSOS()
     LOG_INFO("FallDetection: Sent SOS text: %s", message);
     
     //=== 3. Activate Local Alarms ===
-    // Activate SOS Morse code buzzer pattern (... --- ...)
+    // F12: Start SOS Morse code LUT pattern
     sosPatternStartTime = millis();
-    sosPatternIndex = 0;
     sosBuzzerOn = false;
-    
-#ifdef LED_PIN
-    digitalWrite(LED_PIN, HIGH); // LED strobe handled separately
+
+#ifdef PIN_BUZZER
+    // F4: Acquire buzzer via BuzzerManager (already acquired during PRE_ALARM, re-acquire for safety)
+    BuzzerManager::instance().acquire(OWNER_FALL);
 #endif
 
-#ifdef PIN_VIBRATOR
-    digitalWrite(PIN_VIBRATOR, HIGH); // Continuous vibration
-#endif
+    // F22: Vibrator will be pulsed in sync with SOS pattern in runOnce()
+    // (no continuous HIGH here — handled by SOS_TRIGGERED case)
 }
 
+// F12: LUT-based SOS Morse pattern — O(1) per call, no loop/stack allocation
 void FallDetectionModule::updateSOSBuzzerPattern()
 {
 #ifndef PIN_BUZZER
     return; // No buzzer available
+#else
+    uint32_t elapsed = millis() - sosPatternStartTime;
+    uint8_t index = (elapsed / 200) % SOS_LUT_LEN;
+    bool shouldBeOn = SOS_LUT[index];
+    
+    if (shouldBeOn != sosBuzzerOn) {
+        BuzzerManager::instance().write(shouldBeOn ? 128 : 0);
+        sosBuzzerOn = shouldBeOn;
+    }
 #endif
-    
-    unsigned long now = millis();
-    unsigned long elapsed = now - sosPatternStartTime;
-    
-    // SOS pattern timing: ... --- ...
-    // Pattern array: [beep_duration, gap_duration, beep_duration, gap_duration, ...]
-    // S (3 dots): 200ms beep, 200ms gap (repeat 3x)
-    // O (3 dashes): 600ms beep, 200ms gap (repeat 3x)
-    // S (3 dots): 200ms beep, 200ms gap (repeat 3x)
-    
-    const unsigned long pattern[] = {
-        // S: ... (3 short beeps)
-        SOS_SHORT_BEEP, SOS_GAP,  // Dot 1
-        SOS_SHORT_BEEP, SOS_GAP,  // Dot 2
-        SOS_SHORT_BEEP, SOS_GAP,  // Dot 3
-        // O: --- (3 long beeps)
-        SOS_LONG_BEEP, SOS_GAP,   // Dash 1
-        SOS_LONG_BEEP, SOS_GAP,   // Dash 2
-        SOS_LONG_BEEP, SOS_GAP,   // Dash 3
-        // S: ... (3 short beeps)
-        SOS_SHORT_BEEP, SOS_GAP,  // Dot 1
-        SOS_SHORT_BEEP, SOS_GAP,  // Dot 2
-        SOS_SHORT_BEEP, SOS_GAP   // Dot 3
-    };
-    
-    const uint8_t patternLength = sizeof(pattern) / sizeof(pattern[0]);
-    
-    // Calculate total pattern duration
-    unsigned long totalDuration = 0;
-    for (uint8_t i = 0; i < patternLength; i++) {
-        totalDuration += pattern[i];
-    }
-    
-    // Reset pattern after repeat interval
-    if (elapsed >= SOS_PATTERN_REPEAT) {
-        sosPatternStartTime = now;
-        sosPatternIndex = 0;
-        sosBuzzerOn = false;
-        elapsed = 0;
-    }
-    
-    // Find current position in pattern
-    unsigned long accumulatedTime = 0;
-    for (uint8_t i = 0; i < patternLength; i++) {
-        accumulatedTime += pattern[i];
-        
-        if (elapsed < accumulatedTime) {
-            // We're in this segment
-            bool shouldBeOn = (i % 2 == 0); // Even indices = beep, odd = gap
-            
-            if (shouldBeOn && !sosBuzzerOn) {
-                // Turn on buzzer
-                ledcAttachPin(PIN_BUZZER, 0);
-                ledcSetup(0, 2700, 8); // 2.7kHz
-                ledcWrite(0, 128); // 50% duty cycle
-                sosBuzzerOn = true;
-            } else if (!shouldBeOn && sosBuzzerOn) {
-                // Turn off buzzer
-                ledcWrite(0, 0);
-                sosBuzzerOn = false;
-            }
-            break;
-        }
-    }
 }
 
 int32_t FallDetectionModule::runOnce()
 {
+    // F5: Lazy init — attempt MPU6050 init in thread context with 5s retry
+    if (!mpuInitialized) {
+        Wire.begin(I2C_SDA, I2C_SCL);
+        if (!mpu.begin(0x68)) {
+            LOG_WARN("FallDetection: MPU6050 not ready, retrying in 5s");
+            return 5000; // Retry in 5 seconds
+        }
+        
+        // Configure MPU6050 for fall detection
+        mpu.setAccelerometerRange(MPU6050_RANGE_8_G);  // ±8g range for impact detection
+        mpu.setGyroRange(MPU6050_RANGE_500_DEG);        // ±500°/s for rotation detection
+        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);     // Low-pass filter to reduce noise
+        
+        mpuInitialized = true;
+        LOG_INFO("FallDetection: MPU6050 initialized, state=MONITORING");
+    }
+
+    // F14: In SOS_TRIGGERED, skip I2C reads — only update buzzer/vibrator/LED
+    if (currentState == SOS_TRIGGERED) {
+        updateSOSBuzzerPattern();
+
+#ifdef PIN_VIBRATOR
+        // F22: Pulse vibrator in sync with SOS pattern (saves ~50% motor power)
+        digitalWrite(PIN_VIBRATOR, sosBuzzerOn ? HIGH : LOW);
+#endif
+
+#ifdef LED_PIN
+        // F23: 2Hz LED strobe during auto-SOS
+        digitalWrite(LED_PIN, (millis() / 250) % 2);
+#endif
+
+        return 200; // F14: Align with 200ms LUT slots, no I2C needed
+    }
+
+    // Read sensor data (only for non-SOS states)
     sensors_event_t accel, gyro, temp;
     mpu.getEvent(&accel, &gyro, &temp);
     
@@ -385,18 +383,18 @@ int32_t FallDetectionModule::runOnce()
             transitionToState(SOS_TRIGGERED);
             triggerAutoSOS();
         }
-        // Note: User cancellation is handled by external call to cancelFallAlarm()
+        // Note: User cancellation handled by cancelFallAlarm() (any button)
         break;
-        
-    case SOS_TRIGGERED:
-        // SOS active indefinitely until manually reset
-        // Update SOS Morse code buzzer pattern
-        updateSOSBuzzerPattern();
+
+    default:
         break;
     }
     
-    // Check every 100ms for responsive detection
-    return 100;
+    // F14: Adaptive polling — 2Hz idle, 10Hz active detection
+    switch (currentState) {
+        case MONITORING:    return 500;   // 2Hz idle (saves 80% I2C reads)
+        default:            return 100;   // 10Hz active detection
+    }
 }
 
 #endif // MPU6050 available

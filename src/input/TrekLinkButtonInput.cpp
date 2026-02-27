@@ -1,4 +1,5 @@
 #include "TrekLinkButtonInput.h"
+#include "modules/FallDetectionModule.h"
 #include "InputBroker.h"
 
 #ifdef TREKLINK_VARIANT
@@ -60,6 +61,24 @@ void TrekLinkButtonInput::handleIntPressed()
     if (trekLinkButtonInput) {
         trekLinkButtonInput->intPressHandler();
     }
+}
+
+// WU-6/F24: Override runOnce() to inject any-button fall cancel (thread context, ISR-safe)
+int32_t TrekLinkButtonInput::runOnce()
+{
+    int32_t result = UpDownInterruptBase::runOnce();
+
+    // Any nav button activity during PRE_ALARM cancels fall alarm
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+    if (fallDetectionModule && fallDetectionModule->isInPreAlarm()) {
+        if (pressDetected || upDetected || downDetected) {
+            fallDetectionModule->cancelFallAlarm();
+            LOG_INFO("TrekLinkNav: Fall alarm cancelled by nav button");
+        }
+    }
+#endif
+
+    return result;
 }
 
 #endif // TREKLINK_VARIANT

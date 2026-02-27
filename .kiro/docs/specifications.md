@@ -347,7 +347,7 @@ If Phase 2 is implemented, add these modules:
 1. **WHEN** SOS button is Held for 3 seconds, **THEN** trigger SOS: broadcast Meshtastic POSITION packet + loud buzzer + strobing LED.
 2. **WHEN** SOS button is Clicked once, **THEN** broadcast current location (ping).
 3. **WHILE** in SOS mode, **THEN** transmit continuously for 1 minute, then beacon every 30 seconds.
-4. **WHEN** SOS button is Held for 5 seconds during active SOS, **THEN** cancel and confirm with vibration.
+4. **WHEN** SOS button is Held for 3 seconds during active SOS, **THEN** cancel and confirm with vibration.
 5. **IF** SOS is triggered, **THEN** bypass power control and transmit at maximum power.
 
 ---

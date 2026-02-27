@@ -6,6 +6,7 @@
  */
 
 #include "TrekLinkButtonModule.h"
+#include "BuzzerManager.h"
 #include "FallDetectionModule.h"
 #include "MeshService.h"
 #include "NodeDB.h"
@@ -21,13 +22,20 @@ TrekLinkButtonModule *trekLinkButtonModule;
 TrekLinkButtonModule::TrekLinkButtonModule()
     : SinglePortModule("TrekLinkButton", meshtastic_PortNum_PRIVATE_APP), 
       OSThread("TrekLinkButton"),
+      sosPinChanged(false),
       sosActive(false),
       sosStartTime(0),
+      lastSOSTxTime(0),
       vibrationActive(false),
       vibrationStartTime(0)
 {
     // Initialize SOS button only
     initButton(sosButton, BTN_SOS);
+
+#ifdef PIN_BUZZER
+    // One-time BuzzerManager init (F4: prevents LEDC channel conflict)
+    BuzzerManager::instance().init();
+#endif
 }
 
 void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
@@ -36,8 +44,8 @@ void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
     btn.state = IDLE;
     btn.pressTime = 0;
     btn.releaseTime = 0;
-    btn.lastReading = HIGH;
-    btn.currentReading = HIGH;
+    btn.lastReading = false;    // F2: Not pressed (inverted: pull-up, LOW=pressed)
+    btn.currentReading = false; // F2: Prevents phantom press at boot
     btn.lastDebounceTime = 0;
     btn.clickCount = 0;
 
@@ -50,18 +58,17 @@ void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
     LOG_INFO("TrekLinkButton: SOS button initialized on GPIO %d", pin);
 }
 
-// ISR handler for SOS button (IRAM_ATTR for ESP32)
+// ISR handler for SOS button (F1: volatile flag + setInterval(0) for immediate wake)
 void IRAM_ATTR TrekLinkButtonModule::sosButtonISR() {
     if (trekLinkButtonModule) {
-        // Input-only pin, invert logic (LOW = pressed with pull-up)
-        trekLinkButtonModule->sosButton.currentReading = !digitalRead(BTN_SOS);
-        trekLinkButtonModule->sosButton.lastDebounceTime = millis();
+        trekLinkButtonModule->sosPinChanged = true;     // ISR-safe: no millis()
+        trekLinkButtonModule->setInterval(0);           // Wake thread immediately
     }
 }
 
 void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
 {
-    // currentReading is updated by ISR, check for debounced state changes
+    // F1: Pin state is now read in runOnce() thread context, not ISR
     unsigned long now = millis();
     
     // Debounce: only process if stable for DEBOUNCE_MS
@@ -69,8 +76,8 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
         return; // Still bouncing, ignore
     }
     
-    bool pressed = (btn.currentReading != btn.lastReading && btn.currentReading == HIGH);
-    bool released = (btn.currentReading != btn.lastReading && btn.currentReading == LOW);
+    bool pressed = (btn.currentReading != btn.lastReading && btn.currentReading == true);
+    bool released = (btn.currentReading != btn.lastReading && btn.currentReading == false);
     
     if (pressed || released) {
         btn.lastReading = btn.currentReading;
@@ -78,6 +85,7 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
         return; // No state change
     }
 
+    // F18: Simplified state machine (removed WAIT_DOUBLE_CLICK)
     switch (btn.state) {
     case IDLE:
         if (pressed) {
@@ -89,9 +97,9 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
 
     case PRESS_DETECTED:
         if (released) {
-            btn.clickCount++;
+            btn.clickCount = 1;
             btn.releaseTime = now;
-            btn.state = WAIT_DOUBLE_CLICK;
+            btn.state = IDLE; // F18: Immediate transition, no 300ms wait
         } else if ((now - btn.pressTime) > HOLD_THRESHOLD_MS) {
             btn.state = HOLD_DETECTED;
         }
@@ -102,12 +110,6 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
             btn.state = IDLE;
         }
         break;
-
-    case WAIT_DOUBLE_CLICK:
-        if ((now - btn.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
-            btn.state = IDLE;
-        }
-        break;
     }
 }
 
@@ -115,12 +117,22 @@ void TrekLinkButtonModule::handleSOSButton()
 {
     unsigned long now = millis();
 
-    // CRITICAL: Fall alarm cancellation - ONLY SOS hold 3s can cancel
+    // F11/F24: Any SOS button press cancels fall PRE_ALARM
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
     if (fallDetectionModule && fallDetectionModule->isInPreAlarm()) {
-        if (sosButton.state == HOLD_DETECTED && (now - sosButton.pressTime) >= HOLD_THRESHOLD_MS) {
-            LOG_INFO("SOS Button: Cancelling fall alarm (hold 3s)");
+        if (sosButton.state == PRESS_DETECTED || sosButton.state == HOLD_DETECTED) {
+            LOG_INFO("SOS Button: Cancelling fall alarm (any press)");
             fallDetectionModule->cancelFallAlarm();
+            sosButton.state = IDLE;
+            sosButton.clickCount = 0;
+            return;
+        }
+    }
+    // F21: SOS hold 3s also cancels auto-SOS (SOS_TRIGGERED state)
+    if (fallDetectionModule && fallDetectionModule->isInSOSTriggered()) {
+        if (sosButton.state == HOLD_DETECTED && (now - sosButton.pressTime) >= HOLD_THRESHOLD_MS) {
+            LOG_INFO("SOS Button: Cancelling auto-SOS (hold 3s)");
+            fallDetectionModule->cancelAutoSOS();
             sosButton.state = IDLE;
             sosButton.clickCount = 0;
             return;
@@ -137,6 +149,7 @@ void TrekLinkButtonModule::handleSOSButton()
                 triggerSOS();
                 sosActive = true;
                 sosStartTime = now;
+                lastSOSTxTime = now; // F10: Reset beacon timer
             } else {
                 LOG_INFO("SOS Button: Cancelling SOS mode (hold 3s)");
                 cancelSOS();
@@ -147,13 +160,12 @@ void TrekLinkButtonModule::handleSOSButton()
         break;
 
     case IDLE:
-        // Single click: Broadcast position (ping)
-        if (sosButton.clickCount == 1 && (now - sosButton.releaseTime) > DOUBLE_CLICK_WINDOW_MS) {
+        // F18: Single click processes immediately (no 300ms WAIT_DOUBLE_CLICK delay)
+        if (sosButton.clickCount == 1) {
             LOG_INFO("SOS Button: Broadcasting position (single click)");
             broadcastPosition();
             sosButton.clickCount = 0;
         }
-        // NOTE: SOS double-click removed per user directive
         break;
 
     default:
@@ -178,7 +190,7 @@ void TrekLinkButtonModule::triggerSOS()
     // Create high-priority emergency packet
     meshtastic_MeshPacket *packet = allocDataPacket();
     packet->channel = 0; // Primary channel (broadcast)
-    packet->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    packet->priority = meshtastic_MeshPacket_Priority_MAX; // F15: MAX priority
     packet->want_ack = false; // No ACK for broadcast emergency
     
     // Set packet type to position with SOS flag
@@ -216,19 +228,13 @@ void TrekLinkButtonModule::activateSOSAlarms()
     LOG_INFO("Activating SOS alarms");
     
 #ifdef PIN_BUZZER
-    // Continuous buzzer alarm at 2.7kHz
-    ledcAttachPin(PIN_BUZZER, 0);
-    ledcSetup(0, 2700, 8); // 2.7kHz, 8-bit resolution
-    ledcWrite(0, 128); // 50% duty cycle
-#endif
-
-#ifdef LED_PIN
-    // LED strobe (handled by separate blinker task)
-    digitalWrite(LED_PIN, HIGH);
+    // F4: Use BuzzerManager instead of raw LEDC
+    BuzzerManager::instance().acquire(OWNER_SOS);
+    BuzzerManager::instance().write(128); // 50% duty cycle
 #endif
 
 #ifdef PIN_VIBRATOR
-    // Vibration pulse pattern (implement as needed)
+    // Vibration pulse (will be synced with SOS pattern by runOnce)
     digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
 }
@@ -238,8 +244,9 @@ void TrekLinkButtonModule::cancelSOS()
     LOG_INFO("SOS CANCELLED");
     
 #ifdef PIN_BUZZER
-    ledcWrite(0, 0); // Stop buzzer
-    ledcDetachPin(PIN_BUZZER);
+    // F4: Use BuzzerManager - release ownership
+    BuzzerManager::instance().write(0);
+    BuzzerManager::instance().release(OWNER_SOS);
 #endif
 
 #ifdef LED_PIN
@@ -253,6 +260,13 @@ void TrekLinkButtonModule::cancelSOS()
 
 int32_t TrekLinkButtonModule::runOnce()
 {
+    // F1: Read pin state in thread context (ISR only sets sosPinChanged flag)
+    if (sosPinChanged) {
+        sosPinChanged = false;
+        sosButton.currentReading = !digitalRead(BTN_SOS); // Inverted: pull-up, LOW=pressed
+        sosButton.lastDebounceTime = millis();
+    }
+
 #ifdef PIN_VIBRATOR
     // Handle non-blocking vibration timeout
     if (vibrationActive && (millis() - vibrationStartTime) >= VIBRATION_DURATION_MS) {
@@ -265,6 +279,23 @@ int32_t TrekLinkButtonModule::runOnce()
     updateButton(sosButton);
     handleSOSButton();
 
-    // Run at 100Hz (10ms interval) for responsive button detection
-    return 10;
+    // F10: SOS beacon - retransmit position periodically
+    if (sosActive) {
+        unsigned long elapsed = millis() - sosStartTime;
+        unsigned long interval = (elapsed < 60000) ? 5000 : 30000; // 5s first min, then 30s
+        if ((millis() - lastSOSTxTime) >= interval) {
+            LOG_INFO("SOS Beacon: Retransmitting position");
+            broadcastPosition();
+            lastSOSTxTime = millis();
+        }
+
+#ifdef LED_PIN
+        // F23: 2Hz LED strobe during SOS
+        digitalWrite(LED_PIN, (millis() / 250) % 2);
+#endif
+    }
+
+    // F13: Event-driven polling. Active = 10ms; Idle = 5000ms (ISR calls setInterval(0) to wake)
+    bool active = (sosButton.state != IDLE) || sosActive || vibrationActive;
+    return active ? 10 : 5000;
 }

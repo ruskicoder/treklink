@@ -195,7 +195,7 @@ graph TB
         MPU[MPU6050 IMU<br/>I2C 0x68<br/>Fall Detection]
         ESP32 -- "I2C SDA (21)" --> MPU
         ESP32 -- "I2C SCL (22)" --> MPU
-        ESP32 -- "INT (34)" --> MPU
+        %% INT pin not connected - fall detection uses I2C polling
     end
 
     subgraph Display["Display Subsystem"]
@@ -380,36 +380,13 @@ Power Settings (Meshtastic App):
 #### Firmware Control Example
 
 ```cpp
-// In setup()
-pinMode(PIN_GPS_PWR_EN, OUTPUT);    // GPIO 13
-pinMode(PIN_OLED_GND_EN, OUTPUT);   // GPIO 23
-
-digitalWrite(PIN_GPS_PWR_EN, HIGH);   // GPS ON
-digitalWrite(PIN_OLED_GND_EN, HIGH);  // OLED ON
-
-// To enable Silent Mode (in TrekLinkButtonModule)
-void toggleSilentMode() {
-    static bool silentMode = false;
-    silentMode = !silentMode;
-    
-    digitalWrite(PIN_OLED_GND_EN, silentMode ? LOW : HIGH);
-    
-    // Vibrate confirmation
-    digitalWrite(PIN_VIBRATOR, HIGH);
-    delay(200);
-    digitalWrite(PIN_VIBRATOR, LOW);
-}
-
-// To power-gate GPS (in GPS module)
-void disableGPS() {
-    digitalWrite(PIN_GPS_PWR_EN, LOW);  // Cut GPS power
-    delay(10);  // Allow capacitors to discharge
-}
-
-void enableGPS() {
-    digitalWrite(PIN_GPS_PWR_EN, HIGH);  // Restore GPS power
-    delay(100);  // Wait for GPS boot (cold start)
-}
+// NOTE: Power gating (PIN_GPS_PWR_EN, PIN_OLED_GND_EN, toggleSilentMode)
+// has been REMOVED from TrekLink. Meshtastic firmware handles power saving
+// via sleep modes. These examples are kept for historical reference only.
+//
+// In setup() [HISTORICAL - DO NOT USE]
+// pinMode(PIN_GPS_PWR_EN, OUTPUT);    // GPIO 13 - REMOVED
+// pinMode(PIN_OLED_GND_EN, OUTPUT);   // GPIO 23 - REMOVED
 ```
 
 ---
@@ -624,7 +601,7 @@ private:
         // Create high-priority SOS packet
         MeshPacket packet;
         packet.channel = 0; // Primary channel (broadcast)
-        packet.priority = MeshPacket_Priority_CRITICAL;
+        packet.priority = meshtastic_MeshPacket_Priority_MAX; // SOS uses MAX (not CRITICAL)
         packet.want_ack = false; // No ACK needed for broadcast
         
         // Populate position data
@@ -790,7 +767,7 @@ private:
         // Same as manual SOS trigger in ButtonModule
         MeshPacket packet;
         packet.channel = 0;
-        packet.priority = MeshPacket_Priority_CRITICAL;
+        packet.priority = meshtastic_MeshPacket_Priority_MAX; // SOS uses MAX (not CRITICAL)
         packet.decoded.position = service.gps->getPosition();
         service.sendPacket(&packet);
         

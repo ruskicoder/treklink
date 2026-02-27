@@ -18,17 +18,20 @@
 // Timing constants (milliseconds)
 #define DEBOUNCE_MS 50
 #define HOLD_THRESHOLD_MS 3000  // 3 seconds for SOS trigger/cancel
-#define DOUBLE_CLICK_WINDOW_MS 300
+
+// TrekLink message type discriminator (F8)
+#define TREKLINK_MSG_SOS   0x01
+#define TREKLINK_MSG_FALL  0x02
+#define TREKLINK_MSG_PRIV  0x03  // Future private protocol
 
 class TrekLinkButtonModule : public SinglePortModule, private concurrency::OSThread
 {
 private:
-    // Button state tracking
+    // Button state tracking (F18: removed WAIT_DOUBLE_CLICK)
     enum ButtonState {
         IDLE,
         PRESS_DETECTED,
-        HOLD_DETECTED,
-        WAIT_DOUBLE_CLICK
+        HOLD_DETECTED
     };
 
     struct ButtonInfo {
@@ -44,9 +47,13 @@ private:
 
     ButtonInfo sosButton;  // SOS button only
     
+    // ISR flag (F1: volatile flag pattern, no millis() in ISR)
+    volatile bool sosPinChanged;
+    
     // SOS state tracking
     bool sosActive;
     unsigned long sosStartTime;
+    unsigned long lastSOSTxTime;  // F10: SOS beacon timing
     
     // Vibration feedback timing (non-blocking)
     bool vibrationActive;

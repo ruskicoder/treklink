@@ -39,6 +39,7 @@
 
 // Notifications
 #define PIN_BUZZER 33        // Passive buzzer PWM (avoid strapping pin 12)
+#define BUZZER_LEDC_CHANNEL 0 // LEDC channel for buzzer PWM (shared via BuzzerManager)
 #define PIN_VIBRATOR 4       // Vibration motor (via NPN transistor, avoid strapping pin 15)
 #define LED_PIN 2            // Built-in LED (Meshtastic default)
 
@@ -62,7 +63,9 @@
 #define USE_RF95              // RFM95/SX127x (Ra-02 uses SX1278)
 
 // TrekLink variant flag (enables TrekLink-specific modules)
+#ifndef TREKLINK_VARIANT
 #define TREKLINK_VARIANT
+#endif
 
 // ============================
 //   Canned Message Defaults

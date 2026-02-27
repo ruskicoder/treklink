@@ -23,6 +23,7 @@ class TrekLinkButtonInput : public UpDownInterruptBase
   public:
     TrekLinkButtonInput();
     bool init();
+    int32_t runOnce() override; // F24: Override for any-button fall cancel
     
     // ISR handlers (must be static for attachInterrupt)
     static void handleIntDown();   // DOWN button (GPIO 35)

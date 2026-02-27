@@ -374,7 +374,7 @@ This document serves as the Single Source of Truth (SSOT) for development, engin
 1. **LoRa Ra-02 (SPI):** SCK → GPIO 5, MISO → GPIO 19, MOSI → GPIO 27, CS → GPIO 18, DIO0 → GPIO 26, RESET → GPIO 14.
 2. **GPS (Neo-6M):** RX → GPIO 16 (ESP32 TX1), TX → GPIO 17 (ESP32 RX1), uses hardware UART1.
 3. **I2C Bus:** SDA → GPIO 21, SCL → GPIO 22 (shared by OLED SSD1306 0x3C, MPU6050 0x68).
-4. **MPU6050 INT:** → GPIO 34 (Input Only, for fall detection wake).
+4. **MPU6050:** Uses I2C polling via SDA/SCL (GPIO 21/22). INT pin is not connected (fall detection uses software polling).
 5. **Battery ADC:** → GPIO 36 (Input Only, ADC1_CH0 for voltage sensing).
 6. **GPS P-MOSFET Gate Control:** → GPIO 13 (via S8050-D gate driver transistor).
 7. **OLED GND Switch Control:** → GPIO 23 (S8050-D NPN for low-side switching, Silent Mode).
