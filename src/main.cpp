@@ -872,12 +872,19 @@ void setup()
         LOG_DEBUG("Saved TZ: %s ", config.device.tzdef);
         setenv("TZ", config.device.tzdef, 1);
     } else {
+#ifdef DEFAULT_TIMEZONE
+        // Variant-defined default timezone (e.g., TrekLink uses Vietnam GMT+7)
+        LOG_DEBUG("Applying variant default TZ: %s", DEFAULT_TIMEZONE);
+        setenv("TZ", DEFAULT_TIMEZONE, 1);
+        strcpy(config.device.tzdef, DEFAULT_TIMEZONE);
+#else
         if (strncmp((const char *)slipstreamTZString, "tzpl", 4) == 0) {
             setenv("TZ", "GMT0", 1);
         } else {
             setenv("TZ", (const char *)slipstreamTZString, 1);
             strcpy(config.device.tzdef, (const char *)slipstreamTZString);
         }
+#endif
     }
     tzset();
     LOG_DEBUG("Set Timezone to %s", getenv("TZ"));

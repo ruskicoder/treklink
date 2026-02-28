@@ -285,6 +285,8 @@ static const char *getTimezoneLabelFromValue(const char *tzdef)
         return "Asia/Kolkata";
     if (strcmp(tzdef, "HKT-8") == 0)
         return "Asia/Hong Kong";
+    if (strcmp(tzdef, "ICT-7") == 0)
+        return "Vietnam";
     if (strcmp(tzdef, "AWST-8") == 0)
         return "AU/AWST";
     if (strcmp(tzdef, "ACST-9:30ACDT,M10.1.0,M4.1.0/3") == 0)
@@ -784,6 +786,10 @@ void InkHUD::MenuApplet::execute(MenuItem item)
 
     case SET_TZ_ASIA_HONG_KONG:
         applyTimezone("HKT-8");
+        break;
+
+    case SET_TZ_VIETNAM:
+        applyTimezone("ICT-7");
         break;
 
     case SET_TZ_AU_AWST:
@@ -1303,6 +1309,7 @@ void InkHUD::MenuApplet::showPage(MenuPage page)
         items.push_back(MenuItem("EU/Eastern", SET_TZ_EU_EASTERN, MenuPage::NODE_CONFIG_DEVICE));
         items.push_back(MenuItem("Asia/Kolkata", SET_TZ_ASIA_KOLKATA, MenuPage::NODE_CONFIG_DEVICE));
         items.push_back(MenuItem("Asia/Hong Kong", SET_TZ_ASIA_HONG_KONG, MenuPage::NODE_CONFIG_DEVICE));
+        items.push_back(MenuItem("Vietnam", SET_TZ_VIETNAM, MenuPage::NODE_CONFIG_DEVICE));
         items.push_back(MenuItem("AU/AWST", SET_TZ_AU_AWST, MenuPage::NODE_CONFIG_DEVICE));
         items.push_back(MenuItem("AU/ACST", SET_TZ_AU_ACST, MenuPage::NODE_CONFIG_DEVICE));
         items.push_back(MenuItem("AU/AEST", SET_TZ_AU_AEST, MenuPage::NODE_CONFIG_DEVICE));

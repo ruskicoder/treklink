@@ -371,25 +371,25 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ### 15. Vietnam Timezone (GMT+7) Configuration
 
-- [ ] 15.1 Add Vietnam (GMT+7) to timezone menu options
+- [x] 15.1 Add Vietnam (GMT+7) to timezone menu options
   - Edit MenuHandler.cpp to add "Vietnam (GMT+7)" option with POSIX string "ICT-7"
   - Add SET_TZ_VIETNAM enum to MenuAction.h
   - Test timezone appears in OLED menu list
   - _Requirements: REQ-ID-01.2_
 
-- [ ] 15.2 Implement Vietnam timezone action handler
+- [x] 15.2 Implement Vietnam timezone action handler
   - Create SET_TZ_VIETNAM case handler that applies "ICT-7" timezone
   - Add "Vietnam (GMT+7)" menu item to MenuApplet.cpp
   - Test selecting timezone from OLED menu
   - _Requirements: REQ-ID-01.2_
 
-- [ ] 15.3 Add timezone label mapping for display
+- [x] 15.3 Add timezone label mapping for display
   - Extend getTimezoneLabelFromValue() function to recognize "ICT-7"
   - Return "Vietnam (GMT+7)" label for display
   - Test timezone label displays correctly in device info
   - _Requirements: REQ-ID-01.2_
 
-- [ ] 15.4 Set GMT+7 as default timezone for TrekLink variant
+- [x] 15.4 Set GMT+7 as default timezone for TrekLink variant
   - Define DEFAULT_TIMEZONE as "ICT-7" in variant.h
   - Modify main.cpp timezone initialization to apply variant default on first boot
   - Test fresh firmware shows correct GMT+7 time on OLED clock

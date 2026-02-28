@@ -64,6 +64,9 @@
 // Default LoRa region for TrekLink (VN_433 = MY_433 alias, 433.0-435.0 MHz, 20 dBm)
 #define REGULATORY_LORA_REGIONCODE meshtastic_Config_LoRaConfig_RegionCode_MY_433
 
+// Default timezone for TrekLink (Vietnam, GMT+7 Indochina Time)
+#define DEFAULT_TIMEZONE "ICT-7"
+
 // TrekLink variant flag (enables TrekLink-specific modules)
 #ifndef TREKLINK_VARIANT
 #define TREKLINK_VARIANT

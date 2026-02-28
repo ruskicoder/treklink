@@ -447,6 +447,7 @@ void menuHandler::TZPicker()
         {"EU/Eastern", OptionsAction::Select, "EET-2EEST,M3.5.0/3,M10.5.0/4"},
         {"Asia/Kolkata", OptionsAction::Select, "IST-5:30"},
         {"Asia/Hong_Kong", OptionsAction::Select, "HKT-8"},
+        {"Vietnam", OptionsAction::Select, "ICT-7"},
         {"AU/AWST", OptionsAction::Select, "AWST-8"},
         {"AU/ACST", OptionsAction::Select, "ACST-9:30ACDT,M10.1.0,M4.1.0/3"},
         {"AU/AEST", OptionsAction::Select, "AEST-10AEDT,M10.1.0,M4.1.0/3"},
