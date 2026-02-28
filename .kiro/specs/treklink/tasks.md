@@ -405,19 +405,19 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ### 16. TrekLink Branding Implementation
 
-- [ ] 16.1 Replace Meshtastic splash screen text with TrekLink
+- [x] 16.1 Replace Meshtastic splash screen text with TrekLink
   - Identify splash screen rendering code (Screen.cpp or TFTDisplay.cpp)
   - Replace "Meshtastic" string with "TrekLink" in bottom center text
   - Test device reboot displays "TrekLink" on splash screen
   - _Requirements: REQ-ID-02.1_
 
-- [ ] 16.2 Update Bluetooth advertising name to TrekLink
+- [x] 16.2 Update Bluetooth advertising name to TrekLink
   - Modify BluetoothUtil.cpp BLE name assignment from "Meshtastic_" to "TrekLink_"
   - Maintain 4-digit hex suffix from device ID
   - Test Bluetooth scan shows "TrekLink_abcd" name
   - _Requirements: REQ-ID-02.2_
 
-- [ ] 16.3 Update default node name to TrekLink
+- [x] 16.3 Update default node name to TrekLink
   - Modify NodeDB.cpp default node name from "Meshtastic ####" to "TrekLink ####"
   - Maintain 4-digit identifier suffix
   - Test node info in Meshtastic app shows "TrekLink ####"
