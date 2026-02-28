@@ -314,18 +314,18 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ### 13. Canned Message Presets Configuration
 
-- [ ] 13.1 Enable CannedMessageModule in TrekLink variant
+- [x] 13.1 Enable CannedMessageModule in TrekLink variant
   - Add USE_CANNED_MESSAGE_MODULE definition to variant.h
   - Verify module appears in compiled module list
   - _Requirements: REQ-MSG-01.1, REQ-MSG-01.6_
 
-- [ ] 13.2 Configure default emergency message list
+- [x] 13.2 Configure default emergency message list
   - Define default canned messages string in variant.h: "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"
   - Initialize moduleConfig.canned_message.messages with defaults on first boot
   - Test factory reset loads correct default messages
   - _Requirements: REQ-MSG-02.1, REQ-MSG-03.3_
 
-- [ ] 13.3 Test canned message transmission
+- [x] 13.3 Test canned message transmission
   - Verify message menu opens on MENU button click
   - Test UP/DOWN navigation highlights correct message (uses global buttons from Task 11)
   - Test MENU click sends highlighted message to mesh
@@ -344,19 +344,19 @@ If Phase 2 is incomplete, the device remains a fully functional generic Meshtast
 
 ### 14. VN_433 Region Configuration
 
-- [ ] 14.1 Add VN_433 region option to OLED menu system
+- [x] 14.1 Add VN_433 region option to OLED menu system
   - Edit MenuApplet.cpp to add "VN 433" menu item after MY_433
   - Edit MenuHandler.cpp to add VN_433 option mapped to MY_433 protobuf enum
   - Test OLED region menu displays "VN 433" correctly
   - _Requirements: REQ-ID-01.3_
 
-- [ ] 14.2 Implement VN_433 menu action handler
+- [x] 14.2 Implement VN_433 menu action handler
   - Add SET_REGION_VN_433 enum to MenuAction.h
   - Create case handler in MenuApplet.cpp that applies MY_433 region code
   - Test selecting VN_433 from OLED menu changes region setting
   - _Requirements: REQ-ID-01.1, REQ-ID-01.5_
 
-- [ ] 14.3 Set VN_433 as default region for TrekLink variant
+- [x] 14.3 Set VN_433 as default region for TrekLink variant
   - Define REGULATORY_LORA_REGIONCODE as MY_433 in TrekLink variant.h
   - Test fresh firmware flash boots with VN_433 pre-selected
   - _Requirements: REQ-ID-01.1_

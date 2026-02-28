@@ -61,6 +61,9 @@
 // Supported radio modules
 #define USE_RF95              // RFM95/SX127x (Ra-02 uses SX1278)
 
+// Default LoRa region for TrekLink (VN_433 = MY_433 alias, 433.0-435.0 MHz, 20 dBm)
+#define REGULATORY_LORA_REGIONCODE meshtastic_Config_LoRaConfig_RegionCode_MY_433
+
 // TrekLink variant flag (enables TrekLink-specific modules)
 #ifndef TREKLINK_VARIANT
 #define TREKLINK_VARIANT

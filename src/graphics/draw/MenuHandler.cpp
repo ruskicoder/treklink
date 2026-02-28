@@ -128,6 +128,9 @@ void menuHandler::LoraRegionPicker(uint32_t duration)
         {"UA_433", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_UA_433},
         {"UA_868", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_UA_868},
         {"MY_433", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_MY_433},
+#ifdef TREKLINK_VARIANT
+        {"VN_433", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_MY_433},
+#endif
         {"MY_919", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_MY_919},
         {"SG_923", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_SG_923},
         {"PH_433", OptionsAction::Select, meshtastic_Config_LoRaConfig_RegionCode_PH_433},

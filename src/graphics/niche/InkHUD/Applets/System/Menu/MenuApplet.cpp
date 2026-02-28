@@ -635,6 +635,10 @@ void InkHUD::MenuApplet::execute(MenuItem item)
         applyLoRaRegion(meshtastic_Config_LoRaConfig_RegionCode_MY_433);
         break;
 
+    case SET_REGION_VN_433:
+        applyLoRaRegion(meshtastic_Config_LoRaConfig_RegionCode_MY_433);
+        break;
+
     case SET_REGION_MY_919:
         applyLoRaRegion(meshtastic_Config_LoRaConfig_RegionCode_MY_919);
         break;
@@ -1324,6 +1328,7 @@ void InkHUD::MenuApplet::showPage(MenuPage page)
         items.push_back(MenuItem("UA 433", MenuAction::SET_REGION_UA_433, MenuPage::EXIT));
         items.push_back(MenuItem("UA 868", MenuAction::SET_REGION_UA_868, MenuPage::EXIT));
         items.push_back(MenuItem("MY 433", MenuAction::SET_REGION_MY_433, MenuPage::EXIT));
+        items.push_back(MenuItem("VN 433", MenuAction::SET_REGION_VN_433, MenuPage::EXIT));
         items.push_back(MenuItem("MY 919", MenuAction::SET_REGION_MY_919, MenuPage::EXIT));
         items.push_back(MenuItem("SG 923", MenuAction::SET_REGION_SG_923, MenuPage::EXIT));
         items.push_back(MenuItem("PH 433", MenuAction::SET_REGION_PH_433, MenuPage::EXIT));
