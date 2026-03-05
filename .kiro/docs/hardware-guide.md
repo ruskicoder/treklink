@@ -586,63 +586,94 @@ ESP32 GPIO 2 ──→ 220Ω ──→ LED Anode (+, longer leg)
 
 ### Step 7: Battery Voltage Monitoring
 
-**Voltage Divider (100kΩ + 100kΩ):**
+**Purpose:** Allows the ESP32 to measure actual battery voltage (3.0V–4.2V) via a voltage divider that scales it down to a safe ADC range (1.5V–2.1V).
 
+**Components:**
+- 2× 100kΩ resistors (R1 and R2)
+- 1× 0.1µF ceramic capacitor (optional, noise filter)
+
+> **Important:** On your ESP32 DevKit board, GPIO 36 is labeled **VP** (or SVP) on the silkscreen — NOT "D36".
+> It is an input-only ADC1 pin. Do NOT use ADC2 pins — they conflict with WiFi/BLE.
+
+**Step-by-step wiring:**
+
+1. **Solder R1 (100kΩ) — one leg to Battery (+) terminal.** This is the same positive point that feeds the TP5100 and TPS63802/Mini360.
+
+2. **Connect R1's other leg to ESP32 VP pin** using a short signal wire. This junction point is where the ESP32 reads the divided voltage.
+
+3. **Solder R2 (100kΩ) — one leg to the same junction** (where R1 meets the VP wire from step 2).
+
+4. **Solder R2's remaining leg to GND** (common ground rail).
+
+5. **(Optional) Add a 0.1µF ceramic cap** from **VP pin to GND** — reduces ADC noise.
+
+**Resulting circuit (for reference):**
 ```
-Battery (+) ──┬── (to TP5100 and Mini360)
-              │
-              ├── 100kΩ Resistor (R1)
-              │
-              ├── ESP32 VP pin (GPIO 36) ← Measure here
-              │
-              ├── 100kΩ Resistor (R2)
-              │
-             GND ──┴──
+Battery (+)
+    │
+   [R1] 100kΩ
+    │
+    ├──── VP pin (GPIO 36) ← ESP32 reads here
+    │
+   [R2] 100kΩ
+    │
+   GND
 ```
 
-**Optional:** 0.1µF ceramic cap from GPIO 36 to GND (noise filtering)
+**What you should measure with a multimeter at VP:**
+- Battery at 4.2V → VP reads **2.1V**
+- Battery at 3.7V → VP reads **1.85V**
+- Battery at 3.0V → VP reads **1.5V**
 
-**Calculation:**
-- Battery at 4.2V → GPIO 36 reads 2.1V
-- Battery at 3.7V → GPIO 36 reads 1.85V
-- Battery at 3.0V → GPIO 36 reads 1.5V
-
-**Meshtastic Firmware:**
-- ADC_MULTIPLIER = 2.0 (configured in variant.h)
-- Automatically calculates and displays battery %
-
-> **Note:** GPIO 36 is labeled **VP** (or SVP) on the ESP32 DevKit silkscreen, not "D36".
-> It is an input-only pin on ADC1_CH0. Do NOT use ADC2 pins for battery — they conflict with WiFi/BLE.
+**Firmware:** `ADC_MULTIPLIER = 2.0` in variant.h. Meshtastic automatically converts the divided voltage back to actual battery voltage and displays battery %.
 
 ---
 
 ### Step 7.5: TP5100 Charge Status Detection
 
-**Purpose:** Enables Meshtastic firmware to detect charging state (charging vs full/idle) and display the charging icon in the app.
+**Purpose:** Allows the firmware to detect if the battery is currently charging and show ⚡ icon in the Meshtastic app. Without this, the app can only guess charging state from voltage.
 
 **Components:**
-- 1× 10kΩ resistor (pull-up, from existing stock)
+- 1× 10kΩ resistor (pull-up)
 
-**Wiring:**
+> **Background:** The TP5100's CHRG pin is **open-drain** — it works like a switch to GND.
+> When charging, the switch closes → line goes to 0V. When idle, the switch opens → line floats.
+> The pull-up resistor gives the floating state a defined HIGH (3.3V) so GPIO 13 reads cleanly.
+
+**Step-by-step wiring:**
+
+1. **Solder the 10kΩ resistor — one leg to the 3.3V rail** (the regulated output from TPS63802/Mini360, NOT battery voltage).
+
+2. **Solder the resistor's other leg to ESP32 GPIO 13.** This creates the pull-up — GPIO 13 now defaults to reading 3.3V (HIGH) when nothing pulls it down.
+
+3. **Run a signal wire from the same GPIO 13 point to the TP5100 CHRG pin** on the charger module. That's it — three connections total.
+
+**Resulting circuit (for reference):**
 ```
-3.3V Rail ──→ 10kΩ Resistor ──┬──→ ESP32 GPIO 13
-                               │
-                               └──→ TP5100 CHRG Pin
+3.3V Rail
+    │
+   [R] 10kΩ (pull-up)
+    │
+    ├──── ESP32 GPIO 13 ← firmware reads this pin
+    │
+TP5100 CHRG pin (open-drain: pulls LOW when charging)
 ```
 
-**How it works:**
-- TP5100 CHRG pin is **open-drain** (can only pull LOW, cannot push HIGH)
-- 10kΩ pull-up resistor keeps GPIO 13 at HIGH (3.3V) by default
-- When TP5100 is charging: CHRG pulls LOW → GPIO 13 reads LOW → firmware shows "Charging ⚡"
-- When charge complete or no USB: CHRG floats → pull-up keeps HIGH → firmware shows idle
-- When no battery connected: CHRG floats HIGH → firmware correctly shows "No battery"
+**What you should measure with a multimeter at GPIO 13:**
 
-**Verification:**
+| Scenario | GPIO 13 Voltage | TP5100 LED | App Shows |
+|----------|----------------|------------|-----------|
+| USB in, charging | **~0V** (LOW) | Red on | "Charging ⚡" |
+| Charge complete | **~3.3V** (HIGH) | Blue on | "Full" |
+| No USB | **~3.3V** (HIGH) | Off | Idle |
+| No battery, USB only | **~3.3V** (HIGH) | Flashing | "No battery" |
+
+**Verification steps:**
 1. Connect USB charger with battery installed
-2. Measure GPIO 13 voltage: should read **~0V** (LOW = charging)
-3. Wait for charge complete (blue LED on TP5100)
-4. Measure GPIO 13 voltage: should read **~3.3V** (HIGH = full)
-5. Disconnect battery, keep USB: GPIO 13 should read **~3.3V** (no false positive)
+2. Measure GPIO 13: should read **~0V** (charging)
+3. Wait for blue LED on TP5100 (charge complete)
+4. Measure GPIO 13: should read **~3.3V** (full)
+5. Remove battery, keep USB: GPIO 13 should still read **~3.3V** (no false positive)
 
 ---
 
