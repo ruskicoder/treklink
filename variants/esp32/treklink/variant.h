@@ -36,6 +36,12 @@
 #define ADC_CHANNEL ADC1_GPIO36_CHANNEL
 #define ADC_MULTIPLIER 2.0   // Voltage divider ratio (adjust based on actual resistors)
 
+// TP5100 Charge Status Detection (GPIO 13)
+// CHRG pin: open-drain, LOW = actively charging, HIGH-Z = full/idle/no battery
+// Requires external 10kΩ pull-up resistor from 3.3V to GPIO 13
+#define EXT_CHRG_DETECT       13
+#define EXT_CHRG_DETECT_VALUE LOW
+
 // Notifications
 #define PIN_BUZZER 33        // Passive buzzer PWM (avoid strapping pin 12)
 #define BUZZER_LEDC_CHANNEL 0 // LEDC channel for buzzer PWM (shared via BuzzerManager)
