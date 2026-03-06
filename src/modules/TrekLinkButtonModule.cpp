@@ -263,8 +263,13 @@ int32_t TrekLinkButtonModule::runOnce()
     // F1: Read pin state in thread context (ISR only sets sosPinChanged flag)
     if (sosPinChanged) {
         sosPinChanged = false;
-        sosButton.currentReading = !digitalRead(BTN_SOS); // Inverted: pull-up, LOW=pressed
-        sosButton.lastDebounceTime = millis();
+        // GPIO 34: pull-up (3.3V→4.7kΩ→pin→button→GND)
+        // Idle = HIGH (true), Pressed = LOW (false)
+        bool newReading = digitalRead(BTN_SOS); // HIGH=idle, LOW=pressed
+        if (newReading != sosButton.currentReading) {
+            sosButton.currentReading = newReading;
+            sosButton.lastDebounceTime = millis(); // start debounce window
+        }
     }
 
 #ifdef PIN_VIBRATOR
