@@ -23,7 +23,7 @@ bool TrekLinkButtonInput::init()
     input_broker_event eventPressed = INPUT_BROKER_SELECT;   // MENU select
     
     // Long press events (not currently used by TrekLink)
-    input_broker_event eventPressedLong = INPUT_BROKER_SELECT_LONG;
+    input_broker_event eventPressedLong = INPUT_BROKER_SHUTDOWN;
     input_broker_event eventUpLong = INPUT_BROKER_UP_LONG;
     input_broker_event eventDownLong = INPUT_BROKER_DOWN_LONG;
 

@@ -44,8 +44,8 @@ void TrekLinkButtonModule::initButton(ButtonInfo &btn, uint8_t pin)
     btn.state = IDLE;
     btn.pressTime = 0;
     btn.releaseTime = 0;
-    btn.lastReading = false;    // F2: Not pressed (inverted: pull-up, LOW=pressed)
-    btn.currentReading = false; // F2: Prevents phantom press at boot
+    btn.lastReading = true;     // F2: Pull-up idle = HIGH (3.3V)
+    btn.currentReading = true;  // F2: Pull-up idle = HIGH, prevents phantom press at boot
     btn.lastDebounceTime = 0;
     btn.clickCount = 0;
 
@@ -76,8 +76,8 @@ void TrekLinkButtonModule::updateButton(ButtonInfo &btn)
         return; // Still bouncing, ignore
     }
     
-    bool pressed = (btn.currentReading != btn.lastReading && btn.currentReading == true);
-    bool released = (btn.currentReading != btn.lastReading && btn.currentReading == false);
+    bool pressed = (btn.currentReading != btn.lastReading && btn.currentReading == false);   // LOW = pressed (pull-up to GND)
+    bool released = (btn.currentReading != btn.lastReading && btn.currentReading == true);    // HIGH = released (pull-up idle)
     
     if (pressed || released) {
         btn.lastReading = btn.currentReading;

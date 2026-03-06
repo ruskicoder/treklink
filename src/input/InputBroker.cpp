@@ -272,7 +272,7 @@ void InputBroker::Init()
     BackButtonThread->initButton(backConfig);
 #endif
 
-#if defined(BUTTON_PIN)
+#if defined(BUTTON_PIN) && !defined(TREKLINK_VARIANT)
 #if defined(USERPREFS_BUTTON_PIN)
     int _pinNum = config.device.button_gpio ? config.device.button_gpio : USERPREFS_BUTTON_PIN;
 #else
