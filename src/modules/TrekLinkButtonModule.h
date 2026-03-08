@@ -2,6 +2,9 @@
  * TrekLink Button Module Header
  * Handles SOS button for TrekLink device emergency functions
  * 
+ * Debounce: Clean 4-state machine (IDLE→DEBOUNCE→PRESSED→HOLD_ACTIVE)
+ * separates debounce from event detection to prevent swallowed presses.
+ * 
  * Note: UP/DOWN/MENU navigation buttons are handled by TrekLinkButtonInput
  * which integrates with Meshtastic's InputBroker system.
  */
@@ -19,6 +22,16 @@
 #define DEBOUNCE_MS 50
 #define HOLD_THRESHOLD_MS 3000  // 3 seconds for SOS trigger/cancel
 
+
+// Confirmation feedback patterns
+#define CONFIRM_TRIGGER_PULSES    3   // 3 short pulses on SOS trigger
+#define CONFIRM_TRIGGER_ON_MS   100   // Pulse ON duration
+#define CONFIRM_TRIGGER_OFF_MS  100   // Pulse OFF duration
+#define CONFIRM_CANCEL_PULSES     2   // 2 long pulses on SOS cancel
+#define CONFIRM_CANCEL_ON_MS    300   // Pulse ON duration
+#define CONFIRM_CANCEL_OFF_MS   200   // Pulse OFF duration
+#define CONFIRM_PING_MS          50   // Single short pulse on position ping
+
 // TrekLink message type discriminator (F8)
 #define TREKLINK_MSG_SOS   0x01
 #define TREKLINK_MSG_FALL  0x02
@@ -27,51 +40,48 @@
 class TrekLinkButtonModule : public SinglePortModule, private concurrency::OSThread
 {
 private:
-    // Button state tracking (F18: removed WAIT_DOUBLE_CLICK)
-    enum ButtonState {
-        IDLE,
-        PRESS_DETECTED,
-        HOLD_DETECTED
+    // Clean 4-state debounce machine
+    enum SOSButtonPhase : uint8_t {
+        SOS_BTN_IDLE,        // Waiting for press (raw HIGH = idle with pull-up)
+        SOS_BTN_DEBOUNCE,    // Debouncing: waiting for stable LOW reading
+        SOS_BTN_PRESSED,     // Confirmed pressed, timing hold duration
+        SOS_BTN_HOLD_ACTIVE  // Hold threshold exceeded, SOS triggered/active
     };
 
-    struct ButtonInfo {
-        uint8_t pin;
-        ButtonState state;
-        unsigned long pressTime;
-        unsigned long releaseTime;
-        bool lastReading;
-        bool currentReading;
-        unsigned long lastDebounceTime;
-        int clickCount;
-    };
+    // Button state
+    SOSButtonPhase btnPhase;
+    bool lastStableReading;       // Last confirmed stable reading (after debounce)
+    uint32_t debounceStartTime;   // When debounce timer started
+    uint32_t pressStartTime;      // When confirmed press started (for hold timing)
 
-    ButtonInfo sosButton;  // SOS button only
-    
-    // ISR flag (F1: volatile flag pattern, no millis() in ISR)
-    volatile bool sosPinChanged;
-    
     // SOS state tracking
     bool sosActive;
-    unsigned long sosStartTime;
-    unsigned long lastSOSTxTime;  // F10: SOS beacon timing
-    
-    // Vibration feedback timing (non-blocking)
-    bool vibrationActive;
-    unsigned long vibrationStartTime;
-    const unsigned long VIBRATION_DURATION_MS = 200;
+    uint32_t sosStartTime;
+    uint32_t lastSOSTxTime;       // SOS beacon retransmission timing
+
+
+    // Confirmation feedback state machine (non-blocking pulse sequence)
+    uint8_t confirmPulsesRemaining;   // Pulses left in current confirmation
+    uint32_t confirmPulseOnMs;        // ON duration for current pattern
+    uint32_t confirmPulseOffMs;       // OFF duration for current pattern
+    uint32_t lastConfirmPulseTime;    // Last pulse transition time
+    bool confirmPulseOn;              // Current pulse ON/OFF state
 
     // Private methods
-    void initButton(ButtonInfo &btn, uint8_t pin);
-    void updateButton(ButtonInfo &btn);
-    
-    // ISR handler for SOS button (must be static for attachInterrupt)
-    static void IRAM_ATTR sosButtonISR();
-    
-    void handleSOSButton();
+    void pollButton();                // Core debounce state machine
+    void onButtonPress();             // Called on confirmed press
+    void onButtonRelease(uint32_t holdDuration);  // Called on confirmed release
+    void onHoldThreshold();           // Called when 3s hold reached
+
     void broadcastPosition();
     void triggerSOS();
     void activateSOSAlarms();
     void cancelSOS();
+
+    void startConfirmation(uint8_t pulses, uint32_t onMs, uint32_t offMs);
+    void updateConfirmation();
+    void vibratorPulse(bool on);
+    void showBanner(const char *message, uint32_t durationMs = 3000);
 
 protected:
     virtual int32_t runOnce() override;

@@ -46,6 +46,7 @@
 #define PIN_BUZZER 33        // Passive buzzer PWM (avoid strapping pin 12)
 #define BUZZER_LEDC_CHANNEL 0 // LEDC channel for buzzer PWM (shared via BuzzerManager)
 #define PIN_VIBRATOR 4       // Vibration motor (via NPN transistor, avoid strapping pin 15)
+#define PIN_VIBRATION PIN_VIBRATOR // Meshtastic convention alias (auto-configures ExternalNotificationModule)
 #define LED_PIN 2            // Built-in LED (Meshtastic default)
 
 // Power Management (REMOVED - Using Meshtastic Firmware Sleep Modes Instead)
@@ -82,11 +83,16 @@
 //   Canned Message Defaults
 // ============================
 
-// Default emergency message list (REQ-MSG-02.1)
+// Default canned message list — composable brevity codes for SAR/trekking (REQ-MSG-02.1)
 // Format: Pipe-delimited string (|), max 800 bytes total (CANNED_MESSAGE_MODULE_MESSAGES_SIZE)
-// Priority order: Emergency messages first for fastest access (REQ-MSG-02.3)
-#define CANNED_MESSAGE_MODULE_MESSAGES_DEFAULT \
-    "LOST - HELP|MEDICAL ISSUE|I'M SAFE|WAIT FOR ME|COME TO ME|LOW BATTERY"
+// Group order: Emergency → Status → Confirm → Question → Orders → Direction → Context
+// Users send multiple messages in quick succession to form compound sentences
+// Example: MEET AT → S → CAMP = "Meet at south camp"
+// Total: 33 messages, 173 bytes (27 bytes user-customizable via app)
+#define CANNED_MESSAGE_MODULE_MESSAGES_DEFAULT                                                                                     \
+    "MEDICAL-HELP|LOST-HELP|SAFE|EVAC|LOW BAT|COMING|FOUND|LOST|"                                                                  \
+    "OK|NO|CHECK?|STOP|GO|WAIT ME|COME2ME|TURNBACK|MEET AT|REQST|"                                                                 \
+    "N|S|E|W|R|L|TRAIL|CHKPT|CAMP|DANGR|LO|HI|SPPLY|FD|WTER"
 
 // RX/TX control for SX127x (if external RF switch exists)
 // Uncomment if your Ra-02 module has external TX/RX switch pins

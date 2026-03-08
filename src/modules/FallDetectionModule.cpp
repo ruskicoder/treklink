@@ -289,6 +289,12 @@ int32_t FallDetectionModule::runOnce()
         
         mpuInitialized = true;
         LOG_INFO("FallDetection: MPU6050 initialized, state=MONITORING");
+
+        // Safety: ensure vibrator pin is OUTPUT (may already be set by TrekLinkButtonModule)
+#ifdef PIN_VIBRATOR
+        pinMode(PIN_VIBRATOR, OUTPUT);
+        digitalWrite(PIN_VIBRATOR, LOW);
+#endif
     }
 
     // F14: In SOS_TRIGGERED, skip I2C reads — only update buzzer/vibrator/LED
