@@ -21,6 +21,7 @@
 - components and modules bought in bulk in wholesale retailers (pro-sumer grade)
 - Enclosure must use 3d printing technology, waterproof not needed yet
 - overall: basically the prototype version, but the pcb is now actual pcb with pcba and smd components
+- Use castellated design for solderable modules/ SMD where possible (must be repairable/replacable). The ESP32 module itself either is DIP soldered on top/ castellated/ bare chip. Each method will cost differently for the PCB design.
 
 ## v3.0-4.0: Pre-production consumer grade product
 
