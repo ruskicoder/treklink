@@ -1,6 +1,6 @@
 # Version control:
 
-## v0.0.1 prototype: status done
+## v1.0 prototype: status done
 - product is built using perfboard development prototyping
 - consumer modules is used in the build (Ra-02, Neo-6M, SSD1306, MPU6050)
 - Board footprint large, but overall functional layout of the device is achieved
@@ -13,7 +13,7 @@
     - individual parts bought for prototype development, inconsistent quality. a unit has some defects in peripheral qualities (small beeper, no vibration, etc...)
 - overall: purely prototype.
 
-## v0.0.2 development phase: best quality prototype
+## v2.0 development phase: best quality prototype
 - product is built using a single custom PCB, with castellated compatible module based soldering, and allow for easy replacement of modules using castellated/ through-hole components direct solder with module-ready standby pins
 - consumer modules is used for critical components (RF, GPS, IMU, OLED, etc...), the PCB mainly contains basic circuit design based on the prototype version 
 - Smaller PCB footprint but still allow easy replacement of consumer modules
@@ -22,7 +22,7 @@
 - Enclosure must use 3d printing technology, waterproof not needed yet
 - overall: basically the prototype version, but the pcb is now actual pcb with pcba and smd components
 
-## v0.0.3-v0.0.4: Pre-production consumer grade product
+## v3.0-4.0: Pre-production consumer grade product
 
 - Build pivots towards maximum function of each unit sold while maintaining quality and functionality and cutting costs efficiently
 - Cheaper but functional components that basically do the same, but at a fraction of the cost
@@ -33,7 +33,7 @@
 - Prosumer or wholesale, Pivots to B2B direct sourcing for components
 - Overall: pre-production consumer grade product, ready to mass product tier
 
-## v0.0.5: mass production consumer grade product
+## v5.0: mass production consumer grade product
 - Build pivots towards maximum profit of each unit sold while maintaining quality and functionality
 - Cheapest but functional components that basically do the same, but at a tiny fraction of the cost
 - PCB design will be optimized for mass production, using only proprietary modules using castellated structure
