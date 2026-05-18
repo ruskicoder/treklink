@@ -1,6 +1,6 @@
 # TrekLink v2.0 Hardware Analysis & Upgrade Plan
 
-> **Revision:** 0.0.2 (Best Quality Prototype — Custom PCB)
+> **Revision:** v2.0 (Best Quality Prototype — Custom PCB)
 > **Date:** 2026-05-14
 > **Status:** RESEARCH COMPLETE — AWAITING USER INPUT
 
@@ -70,13 +70,13 @@
 | **RadioLib Support** | Full | **Full (optimized)** |
 | **JLCPCB** | Available | **Available** |
 
-#### Module Options for Through-Hole v0.0.2
+#### Module Options for Through-Hole v2.0
 
 | Module | Chip | Interface | Freq | IPEX | Notes |
 |--------|------|-----------|------|------|-------|
 | **EBYTE E22-400T22D** | SX1262 | SPI | 410-493MHz | Yes | ✅ Most popular for Meshtastic DIY |
 | **Ai-Thinker Ra-01SC** | SX1262 | SPI | 410-525MHz | Yes | Direct successor to Ra-02 |
-| **CDEBYTE E22-400M22S** | SX1262 | SPI | 410-493MHz | Yes | Castellated (for v0.0.3) |
+| **CDEBYTE E22-400M22S** | SX1262 | SPI | 410-493MHz | Yes | Castellated (for v3.0) |
 
 #### Firmware Impact
 
@@ -122,10 +122,10 @@
 | Module | Notes |
 |--------|-------|
 | **u-blox NEO-M9N breakout** | Best accuracy, ~$15-20 |
-| **ATGM336H** | Budget multi-GNSS, ~$3-5, good enough for v0.0.3/0.0.4 |
+| **ATGM336H** | Budget multi-GNSS, ~$3-5, good enough for v3.0/v4.0 |
 | **Beitian BN-880Q** | NEO-M9N + compass, ~$20-25 |
 
-**Recommendation:** NEO-M9N breakout module for v0.0.2 (premium tier). No firmware changes needed (same NMEA UART protocol).
+**Recommendation:** NEO-M9N breakout module for v2.0 (premium tier). No firmware changes needed (same NMEA UART protocol).
 
 ---
 
@@ -144,7 +144,7 @@
 
 #### Recommendation
 
-**ICM-20948** for v0.0.2 (premium):
+**ICM-20948** for v2.0 (premium):
 - 9-axis = built-in compass for heading display (REQ-NAV-03 direction arrows)
 - Lower power than MPU6050
 - Meshtastic already includes SparkFun ICM-20948 library in `platformio.ini`
@@ -157,7 +157,7 @@
 
 ### 5. Power Management — TPS63802 (Custom Circuit on PCB)
 
-Per roadmap: analog/power circuits are **fully custom-designed on PCB** for v0.0.2.
+Per roadmap: analog/power circuits are **fully custom-designed on PCB** for v2.0.
 
 #### Design
 
@@ -186,7 +186,7 @@ This replaces the Mini360/MT3608 modules entirely.
 | **Power Path** | No | No | **Yes** (load + charge simultaneously) |
 | **Cost** | ~$1 module | ~$0.10 IC | ~$2.50 IC |
 
-**Recommendation for v0.0.2:**
+**Recommendation for v2.0:**
 - Use **BQ24074** for premium power path management (charge + operate simultaneously via USB-C)
 - Fall back to **TP4056** if BQ24074 layout complexity is too high for first revision
 - USB-C connector (GCT USB4105-GF-A or similar, available on LCSC)
@@ -203,14 +203,14 @@ Add a **DW01A + FS8205A** dual-MOSFET protection IC combo (standard Li-Ion prote
 
 ### 6. Display — SSD1306 0.96" OLED (Keep)
 
-**No change recommended for v0.0.2.** The SSD1306 is:
+**No change recommended for v2.0.** The SSD1306 is:
 - Well-supported by Meshtastic
 - Low power (~20mA active, 0µA sleep via I2C command)
 - Adequate resolution for SAR use case
 - Available as through-hole module
 
 > [!NOTE]
-> For v0.0.3/0.0.4, consider upgrading to **SH1106 1.3"** or **SSD1309 1.54"** for better readability.
+> For v3.0/v4.0, consider upgrading to **SH1106 1.3"** or **SSD1309 1.54"** for better readability.
 
 ---
 
@@ -218,7 +218,7 @@ Add a **DW01A + FS8205A** dual-MOSFET protection IC combo (standard Li-Ion prote
 
 Per answers.md: 3D print locally in HCMC.
 
-**v0.0.2 specs:**
+**v2.0 specs:**
 - Same form factor ~125×80×32mm
 - Material: **PETG** (better heat/UV resistance than PLA)
 - Features to design:
@@ -252,7 +252,7 @@ Per answers.md: 3D print locally in HCMC.
 | USB-C connector | SMD | **PCBA** |
 | ESD protection | SMD | **PCBA** |
 
-### What Gets Hand-Soldered (Through-Hole for v0.0.2)
+### What Gets Hand-Soldered (Through-Hole for v2.0)
 
 | Component | Mounting | Notes |
 |-----------|----------|-------|
@@ -317,9 +317,9 @@ SX1278 is legacy in Meshtastic. Upgrading to SX1262 is critical for:
 ### Q3: GPS — NEO-M9N or NEO-M8N?
 - NEO-M9N = premium (4-constellation, anti-jamming, ~$15-20)
 - NEO-M8N = mid-tier (3-constellation, ~$8-12)
-- ATGM336H = budget (for v0.0.3/0.0.4, ~$3-5)
+- ATGM336H = budget (for v3.0/v4.0, ~$3-5)
 
-**Confirm NEO-M9N for v0.0.2?**
+**Confirm NEO-M9N for v2.0?**
 
 ### Q4: IMU — ICM-20948 or Keep MPU6050?
 - ICM-20948 = 9-axis (compass for heading), lower power, already in Meshtastic lib
@@ -331,13 +331,13 @@ SX1278 is legacy in Meshtastic. Upgrading to SX1262 is critical for:
 - **BQ24074 (TI):** Premium, power path, USB-C friendly, ~$2.50
 - **TP4056:** Budget, simple, proven, ~$0.10
 
-**BQ24074 for v0.0.2 (premium tier)?**
+**BQ24074 for v2.0 (premium tier)?**
 
 ### Q6: Display Size
 - **0.96" SSD1306** (current, proven)
 - **1.3" SH1106** (bigger, same power, better readability)
 
-**Upgrade display for v0.0.2 or keep 0.96"?**
+**Upgrade display for v2.0 or keep 0.96"?**
 
 ### Q7: PCB Layers
 - **2-layer:** Cheaper, simpler, fine for this complexity
@@ -345,13 +345,13 @@ SX1278 is legacy in Meshtastic. Upgrading to SX1262 is critical for:
 
 **For best quality, 4-layer is recommended for clean RF/power separation.** Agree?
 
-### Q8: Budget Allocation for v0.0.2
+### Q8: Budget Allocation for v2.0
 Per answers.md: ~800k VND (~$32 USD) per version, 3-10 units per batch.
 - PCB + PCBA (5 boards): ~$50-80 on JLCPCB
 - Components (modules × 5): ~$75-100
 - 3D printing (5 enclosures): ~$15-30
 
-**Is ~$160-210 total for 5 units acceptable for v0.0.2?**
+**Is ~$160-210 total for 5 units acceptable for v2.0?**
 
 ### Q9: PCB Design Tool — Flux AI
 You mentioned Flux AI for PCB design. Have you:
@@ -360,11 +360,29 @@ You mentioned Flux AI for PCB design. Have you:
 - C) Want me to prepare a complete schematic specification for Flux input?
 
 ### Q10: Form Factor & Mounting
-The v0.0.2 keeps ~125×80×32mm. Questions:
+The v2.0 keeps ~125×80×32mm. Questions:
 - **Should the OLED be top-mounted (visible through case lid)?**
 - **Button placement: front face or side?**
 - **SMA connector: right side (as v1.0) or top?**
 - **Do you have a 3D printer available, or will you use a local print service?**
+
+
+1. Please use the currency of VND. Actual funds for the development can be seen in "./artifacts/actual-available-funds.md".
+2. PCB design tool: EasyEDA Pro. I am trying Flux.ai now (trial)
+I currently have no PCB design experience and would like some.
+3. For PCBA, these following components must be:
+Small SMD passives, SMD ICs/Chips (i do not have a heatgun or a heatpad)
+=> But, still prioritize full PCBA for streamline development
+4. Start using castellated modules, and bare ics from this version, do use recommended absolute best tier components out there like ESP32 S3 and so on
+5. Keep battery format (21700), case must be as slim as possible (up to 25-28mm, maximum 30mm thick)
+6. 3d Print in Vietnam with VAT support.
+7. Target smaller platform (because its 3d printed case, as slim as possible while still rugged), use rugged materials, at least have a 21mm inner shell height clearnace + 5mm nudge for tolerances and faults, so 26-28mm in clearance -> 30mm thick (maximum). It is pocket form factor so it must follow length first width after (100-120mm length along with 70-80mm width). In a nutshell, kinda like a phone. Prioritize battery life and ruggedness
+8. No formal RF testing. Not in scope
+9. the v2.0 is intended for internal development, that we try to produce the best components we can for auditing the next versions.
+10. Prosumer-grade, premium like TI chips, esp32 high performance, high quality chips for GPS, and so on
+11. Budget is tight, allow only 1 revision with each batch. Proposed batch size is 5 units (including the 1 revision)
+12. The service provider (PCBWay,JLCPCB) or Flux.ai (user based, will need the service provider for completion anyways)
+the cost of service is no more than 13 million vnd. aprrox 240 USD.
 
 ---
 
