@@ -1,10 +1,10 @@
 # TrekLink System Requirements Specification (SRS)
 
 **Project Code:** EXE101-G1-TREKLINK  
-**Version:** 2.0 (Meshtastic Fork Implementation)  
+**Version:** 1.0 (Meshtastic Fork Implementation)  
 **Date:** February 4, 2026  
 **Status:** APPROVED FOR DEVELOPMENT  
-
+[DEPRECATED]
 ---
 
 ## 1. Introduction
