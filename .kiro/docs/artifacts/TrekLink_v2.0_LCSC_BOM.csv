@@ -25,7 +25,7 @@ Quantity,Manufacture Part Number,Manufacturer(optional),Description(optional),LC
 2,5.1kOhm 1% 0402,YAGEO,Resistor 5.1kOhm USB-C CC1+CC2 pull-down,,0402,R11-R12,,
 5,10kOhm 1% 0402,YAGEO,Resistor 10kOhm button pull-up/down + BQ24074 TS,,0402,R13-R17,,
 3,100kOhm 1% 0402,YAGEO,Resistor 100kOhm battery divider x2 + BQ24074 PG,,0402,R18-R20,,
-1,SWPA2520S0R47MT,Sunlord,Power inductor 0.47uH 4.8A 32mOhm shielded,C408339,2520,L1,,
+1,FTC252012SR47MBCA,cjiang,Power inductor 0.47uH 7.5A Isat 13mOhm DCR shielded,C5832368,2520,L1,,
 3,CL21A226KPCLRNC,Samsung Electro-Mechanics,Capacitor 22uF 10V X5R,C15552,0805,C1-C3,,
 8,TCC0603X5R106K100CT,CCTC,Capacitor 10uF 10V X5R,C696901,0603,C4-C11,,
 8,CL05B104KO5NNNC,Samsung Electro-Mechanics,Capacitor 100nF 16V X7R,C1525,0402,C12-C19,,
