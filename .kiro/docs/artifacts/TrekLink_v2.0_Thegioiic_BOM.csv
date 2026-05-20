@@ -29,4 +29,5 @@ Quantity,Manufacture Part Number,Manufacturer(optional),Description(optional),Th
 3,CL21A226KPCLRNC,Samsung Electro-Mechanics,Capacitor 22uF 10V X5R,IC268,0805,C1-C3
 8,TCC0603X5R106K100CT,CCTC,Capacitor 10uF 10V X5R,,0603,C4-C11
 8,CL05B104KO5NNNC,Samsung Electro-Mechanics,Capacitor 100nF 16V X7R,IC3874,0402,C12-C19
-1,SMD1210B150TF,PTTC,Resettable PTC fuse 1.5A hold 6V,,1210,F1
+1,1210L150/16WR,Littelfuse,Resettable PTC fuse 1.5A hold 16V,,1210,F1
+2,U.FL-R-SMT(10),HRS,IPEX U.FL RF connector receptacle SMT,,SMD,J2-J3

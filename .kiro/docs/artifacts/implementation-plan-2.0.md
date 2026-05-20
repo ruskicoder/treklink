@@ -108,7 +108,7 @@
 
 ---
 
-### 2.3 GPS — u-blox NEO-M9N (Module Breakout)
+### 2.3 GPS — u-blox NEO-M9N (Integrated SMD)
 
 | Spec | Value |
 |------|-------|
@@ -117,7 +117,8 @@
 | **Sensitivity** | -167 dBm |
 | **Anti-Jamming** | Yes |
 | **Interface** | UART 9600/115200 baud |
-| **Backup Battery** | Coin cell on breakout for hot start |
+| **Backup Battery** | CR1220 tabbed coin cell on PCB for hot start |
+| **Antenna Connection** | On-board IPEX/U.FL receptacle (J3) |
 | **Price** | ~350,000₫/unit (genuine u-blox module) |
 
 **ESP32-S3 UART mapping:**
