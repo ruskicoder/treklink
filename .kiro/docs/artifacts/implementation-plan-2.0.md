@@ -15,7 +15,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    TrekLink v2.0 PCB                        │
 │                                                             │
-│  ESP32-S3-WROOM-1 (N16R8)   ←SPI→   E22-400M22S (SX1262)  │
+│  ESP32-S3-WROOM-1 (N8R8)    ←SPI→   E22-400M22S (SX1262)  │
 │          │                              │                   │
 │          ├─UART1→ NEO-M9N GPS          │← SMA 433MHz       │
 │          ├─I2C→ ICM-20948 IMU          │                   │
@@ -36,12 +36,12 @@
 
 ## 2. Component Selection (Final)
 
-### 2.1 MCU — ESP32-S3-WROOM-1-N16R8
+### 2.1 MCU — ESP32-S3-WROOM-1-N8R8
 
 | Spec | Value |
 |------|-------|
 | **Core** | Xtensa LX7, dual-core 240MHz |
-| **Flash/PSRAM** | 16MB / 8MB |
+| **Flash/PSRAM** | 8MB / 8MB |
 | **Bluetooth** | BT 5.0 LE |
 | **USB** | Native USB-OTG (no CP2102 needed) |
 | **Package** | Castellated SMD (18×25.5×3.2mm) |
@@ -264,7 +264,7 @@ Standard Li-Ion protection combo. Over-discharge, over-charge, short circuit pro
 
 | Component | Unit Price | ×7 Total | Source |
 |-----------|-----------|----------|--------|
-| ESP32-S3-WROOM-1-N16R8 | 80,000₫ | 560,000₫ | LCSC |
+| ESP32-S3-WROOM-1-N8R8 | 80,000₫ | 560,000₫ | LCSC |
 | E22-400M22S (SX1262 SPI) | 95,000₫ | 665,000₫ | CDEBYTE/Thegioiic |
 | NEO-M9N GPS module | 350,000₫ | 2,450,000₫ | Thegioiic/AliExpress |
 | ICM-20948 (GY breakout) | 70,000₫ | 490,000₫ | Thegioiic |
@@ -396,7 +396,7 @@ variants/esp32s3/treklink_v2_0/
 ```ini
 [env:treklink_v2]
 extends = esp32s3_base
-board = esp32-s3-devkitc-1    ; or custom board JSON for N16R8
+board = esp32-s3-devkitc-1    ; or custom board JSON for N8R8
 board_level = extra
 build_flags =
   ${esp32s3_base.build_flags}

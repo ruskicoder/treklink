@@ -17,7 +17,7 @@
 
 ## Proposed Changes
 
-### 1. MCU — ESP32-S3-WROOM-1 (N16R8)
+### 1. MCU — ESP32-S3-WROOM-1 (N8R8)
 
 > [!IMPORTANT]
 > This is the **single most impactful upgrade** and requires user confirmation.
@@ -28,7 +28,7 @@
 |--------|-----------------|-------------------|
 | **Architecture** | Xtensa LX6 | Xtensa LX7 (faster, more efficient) |
 | **Bluetooth** | BT 4.2 | **BT 5.0 LE** (better range for app pairing) |
-| **Flash/PSRAM** | 4MB flash / no PSRAM | **16MB flash / 8MB PSRAM** (N16R8) |
+| **Flash/PSRAM** | 4MB flash / no PSRAM | **8MB flash / 8MB PSRAM** (N8R8) |
 | **USB** | Requires external CP2102 | **Native USB-OTG** (no UART-USB bridge chip!) |
 | **GPIO Count** | 34 (many restricted) | **45** (more flexible) |
 | **Power** | Higher idle current | Better deep sleep optimization |
@@ -301,7 +301,7 @@ The ESP32-S3 is strongly recommended for v2.0 based on research:
 - More GPIO flexibility for PCB routing
 - Better BT 5.0 for app connectivity
 
-**Are you comfortable with ESP32-S3-WROOM-1 (N16R8)?** The v1.0 firmware variant will need a new variant directory but pin mapping is straightforward.
+**Are you comfortable with ESP32-S3-WROOM-1 (N8R8)?** The v1.0 firmware variant will need a new variant directory but pin mapping is straightforward.
 
 ### Q2: LoRa Radio — SX1262 Confirmed?
 SX1278 is legacy in Meshtastic. Upgrading to SX1262 is critical for:
