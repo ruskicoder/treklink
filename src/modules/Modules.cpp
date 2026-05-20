@@ -186,7 +186,7 @@ void setupModules()
     trekLinkButtonModule = new TrekLinkButtonModule();
     LOG_INFO("TrekLink Button Module initialized");
     
-    // TrekLink fall detection with MPU6050
+    // TrekLink fall detection with ICM-20948 (via ICM20948Singleton)
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
     fallDetectionModule = new FallDetectionModule();
     LOG_INFO("TrekLink Fall Detection Module initialized");

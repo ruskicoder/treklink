@@ -2,175 +2,233 @@
 """
 Preprocess UMAFall dataset for TrekLink training.
 
-Expected dataset location: Fall Detection/DATASET/umaFallData/
-Download from: figshare.com/articles/dataset/UMAFall_Fall_Detection_Dataset/4214283
-No registration required (CC BY 4.0).
+USE THE CORRECTED VERSION:
+  Dataset location: Fall Detection/DATASET/UMAFall_Dataset_corrected_version/
+  (Not UMAFall_Dataset/ — the corrected version fixes sensor data errors.)
 
-UMAFall CSV format (one file per subject/activity):
-  TimeStamp, SampleNo, X, Y, Z, GyroX, GyroY, GyroZ, Device, Activity
-  Device values: Ankle(1), RightPocket(2), Chest(3), Wrist(4), Waist(5)
-  Activity values: 1–11 = ADL, 12–14 = Falls
+ACTUAL FORMAT (confirmed by inspection):
+  - One CSV per subject/activity/trial, named:
+      UMAFall_Subject_{SS}_{ADL|Fall}_{activityName}_{trial}_{timestamp}.csv
+  - File content:
+      Lines starting with '%' = header/metadata comments — SKIP THESE
+      Data lines (semicolon-separated, 7 columns):
+        TimeStamp ; Sample No ; X-Axis ; Y-Axis ; Z-Axis ; Sensor Type ; Sensor ID
+        96;1;0.048;0.950;0.069;0;0
+  - Sensor Type:  0=Accelerometer, 1=Gyroscope, 2=Magnetometer
+  - Sensor ID:    0=RightPocket, 1=Chest, 2=Waist, 3=Wrist, 4=Ankle
 
-Only Device == 5 (Waist) is used to match MPU6050 placement.
+⚠️  SAMPLING RATE WARNING (Waist sensor):
+  The Waist sensor (SensorTag device) produces ~299 rows per recording file
+  for accel AND 299 rows for gyro. If a recording lasts ~30s, this is ~10Hz.
+  Training data from SisFall is at 50Hz (128 samples = 2.56s window).
+  Mixing 10Hz waist data with 50Hz SisFall data means windows from UMAFall
+  actually span ~12.8 seconds of real time, not 2.56 seconds.
 
-Run with --inspect to print column names from your actual files first.
+  RECOMMENDED: Use RightPocket (Sensor ID=0) smartphone accelerometer data
+  which has ~2977 rows per file ≈ 100Hz. This matches our 50Hz target better
+  after decimation (keep every 2nd sample → 50Hz).
+
+  This script defaults to RightPocket data. Set USE_WAIST=True below to
+  override and use Waist SensorTag data (10Hz, may degrade model).
+
+ACTIVITY from FILENAME (not from data columns):
+  Filename contains: ADL_Walking, ADL_Jogging, Fall_forwardFall, etc.
+  Fall types: forwardFall, backwardFall, lateralFall → all falling_regular
+  ADL types: Walking, Jogging, Hopping, Bending, etc. → not_falling
 
 Output: Fall Detection/DATASET/processed/<class>/umafall_<name>.txt
 """
 
+import math
 import os
-import csv
 from pathlib import Path
 
-# ── Adjust if column names differ — run --inspect first ────────────────────────
-COL_AX       = "X"
-COL_AY       = "Y"
-COL_AZ       = "Z"
-COL_GX       = "GyroX"
-COL_GY       = "GyroY"
-COL_GZ       = "GyroZ"
-COL_DEVICE   = "Device"
-COL_ACTIVITY = "Activity"
+# ── Configuration ────────────────────────────────────────────────────────────
+# False = use RightPocket smartphone (ID=0, ~100Hz, better quality for 50Hz pipeline)
+# True  = use Waist SensorTag (ID=2, ~10Hz, may degrade model — see warning above)
+USE_WAIST = True  # RightPocket has accel-only (no gyro rows); Waist SensorTag has 6-axis at ~10Hz
 
-WAIST_DEVICE_ID = 5   # Device==5 is Waist in UMAFall
+WAIST_ID      = 2
+RIGHTPOCKET_ID = 0
+SENSOR_ACCEL  = 0
+SENSOR_GYRO   = 1
+
+# Decimation to reach ~50Hz
+# RightPocket (~100Hz): keep every 2nd sample → 50Hz
+# Waist (~10Hz): no decimation (already below 50Hz)
+SOURCE_HZ_POCKET = 100
+SOURCE_HZ_WAIST  = 10
+TARGET_HZ        = 50
 
 WINDOW_SIZE = 128
 STEP_SIZE   = 64
 
-# UMAFall activity IDs → our 5 classes
-# Activities 1–11 are ADL, 12–14 are Falls (forward, lateral, backward)
-# UMAFall does not have stumble/trip as a separate class — map falls by impact type
-ACTIVITY_MAPPING = {
-    "not_falling":     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-    "falling_light":   [],           # UMAFall has no stumble class
-    "falling_regular": [12, 13, 14], # Forward, lateral, backward falls
-    "falling_extreme": [],           # No stair falls in UMAFall
-    "falling_misc":    [],
+# Physical unit conversion
+# UMAFall accel is in g (confirmed: lying-still Y ≈ 0.948g = gravity)
+# UMAFall gyro is in °/s (confirmed: at-rest drift ≈ ±2.6°/s, consistent with uncalibrated MEMS)
+G       = 9.81
+DEG2RAD = math.pi / 180.0
+
+# Fall types in filename → our 5 classes
+FALL_NAME_MAP = {
+    "forwardFall":  "falling_regular",
+    "backwardFall": "falling_regular",
+    "lateralFall":  "falling_regular",
 }
 
-CODE_TO_CLASS = {}
-for cls, codes in ACTIVITY_MAPPING.items():
-    for c in codes:
-        CODE_TO_CLASS[c] = cls
+
+def parse_activity_from_filename(fname):
+    """Extract (is_fall, class_name) from UMAFall filename.
+
+    Examples:
+      UMAFall_Subject_02_Fall_forwardFall_1_... → (True, 'falling_regular')
+      UMAFall_Subject_02_ADL_Walking_1_...      → (False, 'not_falling')
+    """
+    parts = fname.split("_")
+    # Find ADL or Fall marker
+    try:
+        if "Fall" in parts:
+            idx = parts.index("Fall")
+            fall_type = parts[idx + 1]  # e.g. 'forwardFall'
+            cls = FALL_NAME_MAP.get(fall_type, "falling_regular")
+            return True, cls
+        elif "ADL" in parts:
+            return False, "not_falling"
+    except (ValueError, IndexError):
+        pass
+    return None, None
+
+
+def read_umafall_csv(filepath, sensor_id, decimate_factor):
+    """Read accel and gyro rows for a specific sensor_id, return 6-axis list."""
+    accel_rows = []
+    gyro_rows  = []
+
+    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("%"):
+                continue
+            parts = line.split(";")
+            if len(parts) < 7:
+                continue
+            try:
+                s_type = int(float(parts[5]))
+                s_id   = int(float(parts[6]))
+                x = float(parts[2])
+                y = float(parts[3])
+                z = float(parts[4])
+            except (ValueError, IndexError):
+                continue
+
+            if s_id != sensor_id:
+                continue
+
+            if s_type == SENSOR_ACCEL:
+                accel_rows.append([x, y, z])
+            elif s_type == SENSOR_GYRO:
+                gyro_rows.append([x, y, z])
+
+    # Decimate both
+    accel_rows = [accel_rows[i] for i in range(0, len(accel_rows), decimate_factor)]
+    gyro_rows  = [gyro_rows[i]  for i in range(0, len(gyro_rows),  decimate_factor)]
+
+    # Align lengths
+    n = min(len(accel_rows), len(gyro_rows))
+    if n == 0:
+        return []
+
+    # Merge and convert to physical units: [ax_m/s², ay, az, gx_rad/s, gy, gz]
+    result = []
+    for i in range(n):
+        a = accel_rows[i]
+        g = gyro_rows[i]
+        result.append([
+            a[0] * G, a[1] * G, a[2] * G,
+            g[0] * DEG2RAD, g[1] * DEG2RAD, g[2] * DEG2RAD,
+        ])
+    return result
 
 
 def write_magicwand_window(window, output_file):
     with open(output_file, "w") as f:
         f.write("-.-.-\n")
         for row in window:
-            f.write(",".join(str(v) for v in row) + "\n")
+            f.write(",".join(f"{v:.6f}" for v in row) + "\n")
         f.write("\n")
 
 
-def process_file(csv_path, output_path, file_idx):
-    stats = {cls: 0 for cls in ACTIVITY_MAPPING}
+def process_dataset(dataset_path, output_path):
+    stats = {cls: 0 for cls in ["not_falling", "falling_light",
+                                  "falling_regular", "falling_extreme"]}
 
-    with open(csv_path, "r") as f:
-        # UMAFall files may use semicolons or commas — detect from first line
-        sample = f.read(512)
-        f.seek(0)
-        delimiter = ";" if sample.count(";") > sample.count(",") else ","
-        reader = csv.DictReader(f, delimiter=delimiter)
-        rows = list(reader)
+    if USE_WAIST:
+        sensor_id = WAIST_ID
+        decimate_factor = 1  # 10Hz, no decimation
+        print("Using Waist (SensorTag, ~10Hz) — see sampling rate warning in script header.")
+    else:
+        sensor_id = RIGHTPOCKET_ID
+        decimate_factor = max(1, round(SOURCE_HZ_POCKET / TARGET_HZ))  # = 2
+        print(f"Using RightPocket smartphone (~{SOURCE_HZ_POCKET}Hz -> decimated to ~{SOURCE_HZ_POCKET//decimate_factor}Hz).")
 
-    if not rows:
-        return stats
+    csv_files = sorted(dataset_path.glob("*.csv"))
+    print(f"Found {len(csv_files)} CSV files.")
 
-    # Group by (activity) — each file is already one subject/trial
-    groups = {}
-    for row in rows:
-        try:
-            device_id = int(float(row[COL_DEVICE]))
-            activity_id = int(float(row[COL_ACTIVITY]))
-        except (KeyError, ValueError):
-            continue
+    for i, csv_path in enumerate(csv_files):
+        if i % 50 == 0:
+            print(f"  Processing {i}/{len(csv_files)}...")
 
-        if device_id != WAIST_DEVICE_ID:
-            continue
-
-        target_class = CODE_TO_CLASS.get(activity_id)
+        is_fall, target_class = parse_activity_from_filename(csv_path.stem)
         if target_class is None:
             continue
 
-        if activity_id not in groups:
-            groups[activity_id] = (target_class, [])
-
-        try:
-            imu = [
-                float(row[COL_AX]), float(row[COL_AY]), float(row[COL_AZ]),
-                float(row[COL_GX]), float(row[COL_GY]), float(row[COL_GZ]),
-            ]
-            groups[activity_id][1].append(imu)
-        except (KeyError, ValueError):
-            continue
-
-    for activity_id, (cls, samples) in groups.items():
+        samples = read_umafall_csv(csv_path, sensor_id, decimate_factor)
         if len(samples) < WINDOW_SIZE:
             continue
 
-        cls_dir = output_path / cls
+        cls_dir = output_path / target_class
         cls_dir.mkdir(parents=True, exist_ok=True)
 
         win_idx = 0
         for start in range(0, len(samples) - WINDOW_SIZE + 1, STEP_SIZE):
             window = samples[start:start + WINDOW_SIZE]
-            fname = f"umafall_F{file_idx:03d}_A{activity_id}_W{win_idx:03d}.txt"
+            safe_stem = csv_path.stem.replace(" ", "_")[:60]
+            fname = f"umafall_{safe_stem}_W{win_idx:03d}.txt"
             write_magicwand_window(window, cls_dir / fname)
-            stats[cls] += 1
+            stats[target_class] += 1
             win_idx += 1
 
     return stats
 
 
-def inspect_csv(csv_path):
-    with open(csv_path, "r") as f:
-        sample = f.read(512)
-        f.seek(0)
-        delimiter = ";" if sample.count(";") > sample.count(",") else ","
-        reader = csv.DictReader(f, delimiter=delimiter)
-        print(f"Delimiter: '{delimiter}'")
-        print(f"Columns: {reader.fieldnames}")
-        for i, row in enumerate(reader):
-            if i >= 3:
-                break
-            print(f"  Row {i}: {dict(row)}")
-
-
-def main(inspect=False):
-    base_path = Path(__file__).parent
-    dataset_path = base_path / "umaFallData"
+def main():
+    base_path    = Path(__file__).parent
+    # Always use corrected version
+    dataset_path = base_path / "UMAFall_Dataset_corrected_version"
     output_path  = base_path / "processed"
 
     if not dataset_path.exists():
         print(f"Error: {dataset_path} not found.")
-        print("Download from: figshare.com/articles/dataset/UMAFall_Fall_Detection_Dataset/4214283")
+        print("Expected folder: UMAFall_Dataset_corrected_version/")
+        print("Do NOT use UMAFall_Dataset/ (has sensor data errors).")
         return
 
-    csv_files = list(dataset_path.glob("**/*.csv"))
-    if not csv_files:
-        print(f"No CSV files found in {dataset_path}")
-        return
+    print(f"Processing UMAFall (corrected version) from {dataset_path}")
+    print(f"  Window: {WINDOW_SIZE} samples, step: {STEP_SIZE}")
+    print()
 
-    if inspect:
-        print(f"Inspecting {csv_files[0]}")
-        inspect_csv(csv_files[0])
-        print("\nIf column names differ, edit the COL_* constants at the top of this script.")
-        return
-
-    total_stats = {cls: 0 for cls in ACTIVITY_MAPPING}
-    for idx, csv_path in enumerate(csv_files):
-        print(f"Processing {csv_path.name}...")
-        stats = process_file(csv_path, output_path, idx)
-        for cls, count in stats.items():
-            total_stats[cls] += count
+    stats = process_dataset(dataset_path, output_path)
 
     print("\n=== UMAFall Processing Complete ===")
-    for cls, count in total_stats.items():
+    total = sum(stats.values())
+    for cls, count in stats.items():
         print(f"  {cls}: {count} windows")
-    print(f"\nOutput written to: {output_path}")
-    print("Run data_prepare_fall_detection.py next to merge with SisFall.")
+    print(f"  Total: {total} windows")
+    if total == 0:
+        print("\n  Got 0 windows — check sensor ID / decimation settings.")
+        print("  Try toggling USE_WAIST = True/False at top of script.")
+    print(f"\nOutput: {output_path}")
 
 
 if __name__ == "__main__":
-    import sys
-    main(inspect="--inspect" in sys.argv)
+    main()

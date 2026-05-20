@@ -1,183 +1,197 @@
 #!/usr/bin/env python3
 """
-Preprocess SisFall dataset for MagicWand training
-Organizes data into 5 classes:
-1. not_falling - Normal activities (ADLs)
-2. falling_light - Trips, stumbles
-3. falling_regular - Standard falls (forward, backward, lateral)
-4. falling_extreme - High impact falls
-5. falling_misc - Edge cases (syncope, recovery attempts)
+Preprocess SisFall dataset for TrekLink training.
+
+Dataset location: Fall Detection/DATASET/sisfallData/
+Expected structure: sisfallData/SA01/, SA02/, ..., SE15/
+  each containing files like D01_SA01_R01.txt, F01_SA01_R01.txt, etc.
+
+ACTUAL FORMAT (confirmed by inspection):
+  - 9 comma-separated integers per line, no header
+  - Columns: ADXL345_x, ADXL345_y, ADXL345_z, ITG3200_x, ITG3200_y, ITG3200_z,
+             MMA8451Q_x, MMA8451Q_y, MMA8451Q_z
+  - We use columns 0-2 (ADXL345 accel) + 3-5 (ITG3200 gyro) = 6 axes
+  - Sampling rate: 200 Hz
+  - Typical file length: ~19,999 lines (~100 seconds)
+
+Subjects:
+  SA01-SA23: 23 young adults
+  SE01-SE15: 15 elderly participants
+
+Activities:
+  D01-D19: Activities of Daily Living (ADL)
+  F01-F15: Falls
+
+Downsampling: 200Hz → 50Hz (keep every 4th sample)
+Windowing: 128-sample sliding windows, 50% overlap (64-sample step)
+
+Output: Fall Detection/DATASET/processed/<class>/sisfall_<name>.txt
 """
 
+import math
 import os
-import shutil
 from pathlib import Path
 
-# Define the classification mapping based on SisFall activity codes
+SOURCE_HZ   = 200
+TARGET_HZ   = 50
+DECIMATE    = SOURCE_HZ // TARGET_HZ  # = 4
+
+WINDOW_SIZE = 128
+STEP_SIZE   = 64   # 50% overlap
+
+# Physical unit conversion: raw ADC -> m/s² and rad/s
+# ADXL345 ±2g full-resolution mode: 256 LSB/g (confirmed from datasheet + vector-magnitude check)
+# ITG3200: 14.375 LSB/°/s (confirmed from datasheet)
+ACCEL_LSB_PER_G  = 256.0
+GYRO_LSB_PER_DPS = 14.375
+G        = 9.81
+DEG2RAD  = math.pi / 180.0
+
+# SisFall activity code → 5-class mapping
 ACTIVITY_MAPPING = {
-    # NOT FALLING - Activities of Daily Living (ADLs)
-    'not_falling': [
-        'D01',  # Walking slowly
-        'D02',  # Walking quickly
-        'D03',  # Jogging slowly
-        'D04',  # Jogging quickly
-        'D05',  # Walking upstairs/downstairs slowly
-        'D06',  # Walking upstairs/downstairs quickly
-        'D07',  # Sit in half height chair slowly
-        'D08',  # Sit in half height chair quickly
-        'D09',  # Sit in low height chair slowly
-        'D10',  # Sit in low height chair quickly
-        'D12',  # Sitting, lying slowly, sit again
-        'D13',  # Sitting, lying quickly, sit again
-        'D14',  # On back, change to lateral, back again
-        'D15',  # Standing, bending at knees, getting up
-        'D16',  # Standing, bending without bending knees, getting up
-        'D17',  # Get into car, remain seated, get out
-        'D19',  # Gently jump without falling
+    "not_falling": [
+        "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08",
+        "D09", "D10", "D11", "D12", "D13", "D14", "D15", "D16", "D17",
+        "D19",
     ],
-    
-    # FALLING LIGHT - Trips, stumbles, near-falls
-    'falling_light': [
-        'D18',  # Stumble while walking
-        'F04',  # Fall forward while walking caused by a trip
+    "falling_light": [
+        "D18",  # Stumble while walking
+        "F04",  # Fall forward while walking caused by a trip
     ],
-    
-    # FALLING REGULAR - Standard falls
-    'falling_regular': [
-        'F01',  # Fall forward while walking caused by a slip
-        'F02',  # Fall backward while walking caused by a slip
-        'F03',  # Lateral fall while walking caused by a slip
-        'F05',  # Fall forward when trying to get up
-        'F06',  # Fall backward when trying to get up
-        'F07',  # Lateral fall when trying to get up
-        'F08',  # Fall forward while sitting
-        'F09',  # Fall backward while sitting
-        'F10',  # Lateral fall while sitting
+    "falling_regular": [
+        "F01",  # Fall forward while walking caused by a slip
+        "F02",  # Fall backward while walking caused by a slip
+        "F03",  # Lateral fall while walking caused by a slip
+        "F05",  # Fall forward when trying to get up
+        "F06",  # Fall backward when trying to get up
+        "F07",  # Lateral fall when trying to get up
+        "F08",  # Fall forward while sitting
+        "F09",  # Fall backward while sitting
+        "F10",  # Lateral fall while sitting
     ],
-    
-    # FALLING EXTREME - High impact, severe falls
-    'falling_extreme': [
-        'F11',  # Fall while walking downstairs
-        'F12',  # Fall while walking upstairs
-        'F13',  # Fall forward using hands to dampen fall
-        'F14',  # Fall forward using knees to dampen fall
-        'F15',  # Fall backward using hands to dampen fall
+    "falling_extreme": [
+        "F11",  # Fall while walking downstairs — multiple impacts, high energy
+        "F12",  # Fall while walking upstairs — high energy
+        "F13",  # Fall forward using hands to dampen — standing height, long fall time
+        "F14",  # Fall forward using knees to dampen — standing height, long fall time
+        "F15",  # Fall backward using hands to dampen — standing height, long fall time
     ],
-    
-    # FALLING MISC - Edge cases
-    'falling_misc': [
-        'D11',  # Sitting, trying to get up, collapse into chair (recovery attempt)
-    ]
 }
 
-def create_output_structure(base_path):
-    """Create output directory structure"""
-    output_path = base_path / 'processed'
-    for class_name in ACTIVITY_MAPPING.keys():
-        class_dir = output_path / class_name
-        class_dir.mkdir(parents=True, exist_ok=True)
-    return output_path
+# Invert for O(1) lookup
+CODE_TO_CLASS = {}
+for cls, codes in ACTIVITY_MAPPING.items():
+    for c in codes:
+        CODE_TO_CLASS[c] = cls
 
-def convert_to_magicwand_format(input_file, output_file):
+
+def read_sisfall_file(filepath):
+    """Read SisFall file, return list of [ax, ay, az, gx, gy, gz] per sample.
+
+    SisFall has two line formats depending on recording:
+      ADL files:  'value,value,...,value\\n'        (no trailing semicolon)
+      Fall files: 'value,value,...,value;\\n'       (trailing semicolon)
+    Both are handled by stripping the trailing semicolon before parsing.
     """
-    Convert SisFall format to MagicWand format
-    SisFall: ADXL345_x, ADXL345_y, ADXL345_z, ITG3200_x, ITG3200_y, ITG3200_z, MMA8451Q_x, MMA8451Q_y, MMA8451Q_z
-    MagicWand expects: ax, ay, az, gx, gy, gz (using ADXL345 accel + ITG3200 gyro)
-    """
-    with open(input_file, 'r') as f_in:
-        lines = f_in.readlines()
-    
-    # Add separator at start (MagicWand format)
-    output_lines = ['-.-.-\n']
-    
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Remove any trailing semicolons and parse the 9 values
-        line = line.rstrip(';')
-        values = [int(x.strip()) for x in line.split(',')]
-        if len(values) != 9:
-            continue
-        
-        # Extract ADXL345 (accel) and ITG3200 (gyro)
-        ax, ay, az = values[0], values[1], values[2]
-        gx, gy, gz = values[3], values[4], values[5]
-        
-        # Format as MagicWand expects
-        output_lines.append(f'{ax},{ay},{az},{gx},{gy},{gz}\n')
-    
-    # Add blank line at end
-    output_lines.append('\n')
-    
-    with open(output_file, 'w') as f_out:
-        f_out.writelines(output_lines)
+    samples = []
+    with open(filepath, "r") as f:
+        for line in f:
+            line = line.strip().rstrip(";")
+            if not line:
+                continue
+            try:
+                values = [int(x.strip()) for x in line.split(",")]
+            except ValueError:
+                continue
+            if len(values) != 9:
+                continue
+            ax_ms2 = values[0] / ACCEL_LSB_PER_G * G
+            ay_ms2 = values[1] / ACCEL_LSB_PER_G * G
+            az_ms2 = values[2] / ACCEL_LSB_PER_G * G
+            gx_rs  = values[3] / GYRO_LSB_PER_DPS * DEG2RAD
+            gy_rs  = values[4] / GYRO_LSB_PER_DPS * DEG2RAD
+            gz_rs  = values[5] / GYRO_LSB_PER_DPS * DEG2RAD
+            samples.append([ax_ms2, ay_ms2, az_ms2, gx_rs, gy_rs, gz_rs])
+    return samples
+
+
+def decimate(samples, factor):
+    return [samples[i] for i in range(0, len(samples), factor)]
+
+
+def write_magicwand_window(window, output_file):
+    with open(output_file, "w") as f:
+        f.write("-.-.-\n")
+        for row in window:
+            f.write(",".join(f"{v:.4f}" for v in row) + "\n")
+        f.write("\n")
+
 
 def process_dataset(sisfall_path, output_path):
-    """Process all files and organize by class"""
-    stats = {class_name: 0 for class_name in ACTIVITY_MAPPING.keys()}
-    
-    # Iterate through all subject folders
-    for subject_dir in sisfall_path.iterdir():
-        if not subject_dir.is_dir() or subject_dir.name.startswith('.'):
-            continue
-        
-        print(f'Processing {subject_dir.name}...')
-        
-        # Process each file in the subject directory
-        for data_file in subject_dir.glob('*.txt'):
-            # Extract activity code from filename (e.g., D01_SA01_R01.txt -> D01)
-            activity_code = data_file.stem.split('_')[0]
-            
-            # Find which class this activity belongs to
-            target_class = None
-            for class_name, codes in ACTIVITY_MAPPING.items():
-                if activity_code in codes:
-                    target_class = class_name
-                    break
-            
+    stats = {cls: 0 for cls in ["not_falling", "falling_light", "falling_regular", "falling_extreme"]}
+
+    subject_dirs = sorted([
+        d for d in sisfall_path.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    ])
+    print(f"Found {len(subject_dirs)} subject folders.")
+
+    for subject_dir in subject_dirs:
+        txt_files = sorted(subject_dir.glob("*.txt"))
+        for data_file in txt_files:
+            activity_code = data_file.stem.split("_")[0]  # e.g. D01_SA01_R01 → D01
+            target_class = CODE_TO_CLASS.get(activity_code)
             if target_class is None:
-                print(f'  Warning: Unknown activity code {activity_code} in {data_file.name}')
                 continue
-            
-            # Create output filename
-            output_filename = f'output_{target_class}_{data_file.stem}.txt'
-            output_file = output_path / target_class / output_filename
-            
-            # Convert and save
-            convert_to_magicwand_format(data_file, output_file)
-            stats[target_class] += 1
-    
+
+            samples = read_sisfall_file(data_file)
+            if not samples:
+                continue
+
+            # Downsample 200Hz → 50Hz
+            samples = decimate(samples, DECIMATE)
+
+            if len(samples) < WINDOW_SIZE:
+                continue
+
+            cls_dir = output_path / target_class
+            cls_dir.mkdir(parents=True, exist_ok=True)
+
+            win_idx = 0
+            for start in range(0, len(samples) - WINDOW_SIZE + 1, STEP_SIZE):
+                window = samples[start:start + WINDOW_SIZE]
+                fname = f"sisfall_{data_file.stem}_W{win_idx:03d}.txt"
+                write_magicwand_window(window, cls_dir / fname)
+                stats[target_class] += 1
+                win_idx += 1
+
     return stats
 
-def main():
-    # Paths
-    base_path = Path(__file__).parent
-    sisfall_path = base_path / 'sisfallData'
-    
-    if not sisfall_path.exists():
-        print(f'Error: SisFall dataset not found at {sisfall_path}')
-        return
-    
-    print('Creating output directory structure...')
-    output_path = create_output_structure(base_path)
-    
-    print('Processing dataset...')
-    stats = process_dataset(sisfall_path, output_path)
-    
-    print('\n=== Processing Complete ===')
-    print(f'Output directory: {output_path}')
-    print('\nFiles per class:')
-    for class_name, count in stats.items():
-        print(f'  {class_name}: {count} files')
-    
-    print('\n=== Class Descriptions ===')
-    print('not_falling: Normal daily activities (walking, sitting, stairs, etc.)')
-    print('falling_light: Stumbles and trips')
-    print('falling_regular: Standard falls (slips, falls from sitting/standing)')
-    print('falling_extreme: High-impact falls (stairs, using hands/knees to dampen)')
-    print('falling_misc: Edge cases (collapse into chair, recovery attempts)')
 
-if __name__ == '__main__':
+def main():
+    base_path    = Path(__file__).parent
+    sisfall_path = base_path / "sisfallData"
+    output_path  = base_path / "processed"
+
+    if not sisfall_path.exists():
+        print(f"Error: {sisfall_path} not found.")
+        return
+
+    print(f"Processing SisFall from {sisfall_path}")
+    print(f"  Subjects: {len(list(sisfall_path.glob('S*')))} folders")
+    print(f"  Decimation: every {DECIMATE}th sample ({SOURCE_HZ}Hz -> {TARGET_HZ}Hz)")
+    print(f"  Window: {WINDOW_SIZE} samples, step: {STEP_SIZE}")
+    print()
+
+    stats = process_dataset(sisfall_path, output_path)
+
+    print("\n=== SisFall Processing Complete ===")
+    total = sum(stats.values())
+    for cls, count in stats.items():
+        print(f"  {cls}: {count} windows")
+    print(f"  Total: {total} windows")
+    print(f"\nOutput: {output_path}")
+
+
+if __name__ == "__main__":
     main()

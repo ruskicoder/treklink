@@ -1,11 +1,20 @@
 /*
- * Fall Detection Module Implementation
- * Automatic fall detection and SOS triggering for unconscious users
+ * Fall Detection Module — ICM-20948 implementation
+ *
+ * Two-stage severity system:
+ *   Stage 1: threshold state machine detects the fall event
+ *   Stage 2: fall category bitmask + lethal meter score → LETHAL / NON_LETHAL
+ *
+ * Sensor config: gpm16 accel (up to ~16g, no clipping on real falls), dps2000 gyro.
+ *
+ * Note: ICM20948Sensor (screen wake-on-motion) uses the same singleton.
+ * FallDetectionModule takes ownership via sleep(false) + scale reconfigure.
+ * Disable wake-on-tap in device config to avoid conflict.
  */
 
 #include "FallDetectionModule.h"
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<Adafruit_MPU6050.h>)
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<ICM_20948.h>)
 
 #include "BuzzerManager.h"
 #include "MeshService.h"
@@ -15,89 +24,294 @@
 
 FallDetectionModule *fallDetectionModule;
 
-// F12: Static LUT definition (declared in header)
-constexpr bool FallDetectionModule::SOS_LUT[];
+constexpr bool  FallDetectionModule::SOS_LUT[];
+constexpr float FallDetectionModule::NORM_MEAN[];
+constexpr float FallDetectionModule::NORM_STD[];
+
+static uint8_t s_tensorArena[FallDetectionModule::TENSOR_ARENA_SIZE];
+
+// ── Constructor ────────────────────────────────────────────────────────────
 
 FallDetectionModule::FallDetectionModule()
     : SinglePortModule("FallDetection", meshtastic_PortNum_PRIVATE_APP),
       OSThread("FallDetection"),
       currentState(MONITORING),
-      mpuInitialized(false),  // F5: Lazy init
+      sensor(nullptr),
+      sensorInitialized(false),
       freefallStartTime(0),
       impactTime(0),
+      impactWindowStart(0),
+      spikeStartTime(0),
       inactivityStartTime(0),
       prealarmStartTime(0),
       lastAlarmBeepTime(0),
-      isBeepOn(false),        // F3: Alarm robustness
       sosPatternStartTime(0),
-      sosBuzzerOn(false)
+      lastSOSTime(0),
+      isBeepOn(false),
+      sosBuzzerOn(false),
+      preFallAccelEMA(1.0f),
+      lastNormalAccelG(1.0f),
+      freefallMaxGyro(0.0f),
+      peakImpactG(0.0f),
+      gyroAtPeakG(0.0f),
+      peakJerk(0.0f),
+      prevAccelG(1.0f),
+      impactPhaseDuration(0),
+      impactSpikeCount(0),
+      inImpactSpike(false),
+      impactWindowActive(false),
+      fallCategories(FALL_NONE),
+      severity(SEVERITY_NON_LETHAL),
+      responseTimeMs(0),
+      bufferHead(0),
+      bufferFull(false),
+      mlInitialized(false),
+      interpreter(nullptr),
+      inputTensor(nullptr)
 {
-    // F5: MPU6050 init moved to runOnce() for lazy initialization
-    LOG_INFO("FallDetection: Module created, will init MPU6050 in runOnce()");
+    memset(imuBuffer, 0, sizeof(imuBuffer));
+    LOG_INFO("FallDetection: Module created, will init ICM-20948 in runOnce()");
 }
+
+// ── ML Stage 1 ─────────────────────────────────────────────────────────────
+
+bool FallDetectionModule::initML()
+{
+    static bool already = false;
+    if (already) return interpreter != nullptr;
+    already = true;
+
+    static tflite::MicroMutableOpResolver<8> resolver;
+    resolver.AddConv2D();
+    resolver.AddMaxPool2D();
+    resolver.AddFullyConnected();
+    resolver.AddMean();
+    resolver.AddSoftmax();
+    resolver.AddReshape();
+    resolver.AddQuantize();
+    resolver.AddDequantize();
+
+    static tflite::MicroInterpreter si(
+        tflite::GetModel(g_fall_model_data), resolver,
+        s_tensorArena, TENSOR_ARENA_SIZE);
+    interpreter = &si;
+
+    if (interpreter->AllocateTensors() != kTfLiteOk) {
+        LOG_ERROR("FallDetection: ML AllocateTensors failed — inference disabled");
+        interpreter = nullptr;
+        return false;
+    }
+
+    inputTensor = interpreter->input(0);
+    LOG_INFO("FallDetection: ML ready, arena=%u bytes", interpreter->arena_used_bytes());
+    return true;
+}
+
+void FallDetectionModule::fillBuffer(float ax, float ay, float az,
+                                     float gx, float gy, float gz)
+{
+    imuBuffer[bufferHead][0] = ax;
+    imuBuffer[bufferHead][1] = ay;
+    imuBuffer[bufferHead][2] = az;
+    imuBuffer[bufferHead][3] = gx;
+    imuBuffer[bufferHead][4] = gy;
+    imuBuffer[bufferHead][5] = gz;
+    bufferHead = (bufferHead + 1) % IMU_BUFFER_LEN;
+    if (!bufferFull && bufferHead == 0)
+        bufferFull = true;
+}
+
+bool FallDetectionModule::runMLInference()
+{
+    if (!mlInitialized || interpreter == nullptr)
+        return true;  // no ML — let state machine decide
+
+    if (!bufferFull) {
+        LOG_DEBUG("FallDetection: ML buffer not full yet, skipping");
+        return true;
+    }
+
+    float   in_scale = inputTensor->params.scale;
+    int32_t in_zero  = inputTensor->params.zero_point;
+    int8_t *in_data  = inputTensor->data.int8;
+
+    for (int i = 0; i < IMU_BUFFER_LEN; i++) {
+        int src = (bufferHead + i) % IMU_BUFFER_LEN;  // oldest → newest
+        for (int ch = 0; ch < 6; ch++) {
+            float   norm = (imuBuffer[src][ch] - NORM_MEAN[ch]) / NORM_STD[ch];
+            int32_t q    = (int32_t)roundf(norm / in_scale) + in_zero;
+            if (q >  127) q =  127;
+            if (q < -128) q = -128;
+            in_data[i * 6 + ch] = (int8_t)q;
+        }
+    }
+
+    if (interpreter->Invoke() != kTfLiteOk) {
+        LOG_ERROR("FallDetection: ML invoke failed");
+        return true;
+    }
+
+    TfLiteTensor *out      = interpreter->output(0);
+    float         out_sc   = out->params.scale;
+    int32_t       out_zero = out->params.zero_point;
+    float not_fall = (out->data.int8[0] - out_zero) * out_sc;
+    float fall     = (out->data.int8[1] - out_zero) * out_sc;
+
+    LOG_INFO("FallDetection: ML fall=%.3f not_fall=%.3f -> %s",
+             fall, not_fall, fall > not_fall ? "FALL" : "not_fall");
+
+    return fall > not_fall;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 void FallDetectionModule::transitionToState(FallState newState)
 {
     if (currentState == newState) return;
-    
-    LOG_DEBUG("FallDetection: State transition %d -> %d", currentState, newState);
+    LOG_DEBUG("FallDetection: State %d -> %d", currentState, newState);
     currentState = newState;
 }
 
-float FallDetectionModule::calculateTotalAcceleration(sensors_event_t &accel)
+bool FallDetectionModule::readSensor(float &totalAccel_g, float &totalGyro_rads)
 {
-    // Calculate magnitude of acceleration vector
-    return sqrt(sq(accel.acceleration.x) + 
-                sq(accel.acceleration.y) + 
-                sq(accel.acceleration.z)) / 9.81f; // Convert to g-force
+    if (!sensor->dataReady())
+        return false;
+
+    sensor->getAGMT();
+
+    float ax = sensor->agmt.acc.axes.x / ACCEL_LSB_PER_G;
+    float ay = sensor->agmt.acc.axes.y / ACCEL_LSB_PER_G;
+    float az = sensor->agmt.acc.axes.z / ACCEL_LSB_PER_G;
+    totalAccel_g = sqrtf(ax * ax + ay * ay + az * az);
+
+    float gx = sensor->agmt.gyr.axes.x / GYRO_LSB_PER_DPS * DEG_TO_RAD_F;
+    float gy = sensor->agmt.gyr.axes.y / GYRO_LSB_PER_DPS * DEG_TO_RAD_F;
+    float gz = sensor->agmt.gyr.axes.z / GYRO_LSB_PER_DPS * DEG_TO_RAD_F;
+    totalGyro_rads = sqrtf(gx * gx + gy * gy + gz * gz);
+
+    fillBuffer(ax, ay, az, gx, gy, gz);
+    return true;
 }
 
-float FallDetectionModule::calculateTotalGyro(sensors_event_t &gyro)
+bool FallDetectionModule::checkInactivity(float totalAccel_g, float totalGyro_rads)
 {
-    // Calculate magnitude of gyroscope vector
-    return sqrt(sq(gyro.gyro.x) + sq(gyro.gyro.y) + sq(gyro.gyro.z));
+    return (fabsf(totalAccel_g - 1.0f) < 0.2f) && (totalGyro_rads < GYRO_STILLNESS_THRESHOLD);
 }
 
-bool FallDetectionModule::checkInactivity(sensors_event_t &accel, sensors_event_t &gyro)
+void FallDetectionModule::resetFallData()
 {
-    float totalAccel = calculateTotalAcceleration(accel);
-    float totalGyro = calculateTotalGyro(gyro);
-    
-    // Check if device is stationary (acceleration near 1g, no rotation)
-    bool accelStill = (fabs(totalAccel - 1.0f) < 0.2f); // Within 0.2g of 1g
-    bool gyroStill = (totalGyro < GYRO_STILLNESS_THRESHOLD);
-    
-    return (accelStill && gyroStill);
+    // preFallAccelEMA and lastNormalAccelG are intentionally NOT reset here —
+    // they are accumulated during MONITORING and read at freefall entry.
+    freefallMaxGyro      = 0.0f;
+    peakImpactG          = 0.0f;
+    gyroAtPeakG          = 0.0f;
+    peakJerk             = 0.0f;
+    prevAccelG           = 1.0f;
+    impactPhaseDuration  = 0;
+    impactSpikeCount     = 0;
+    inImpactSpike        = false;
+    impactWindowActive   = false;
+    impactWindowStart    = 0;
+    spikeStartTime       = 0;
+    fallCategories       = FALL_NONE;
+    severity             = SEVERITY_NON_LETHAL;
+    responseTimeMs       = 0;
 }
+
+void FallDetectionModule::computeFallCategories(unsigned long freefallDurationMs)
+{
+    fallCategories = FALL_NONE;
+
+    // Freefall duration
+    if (freefallDurationMs < FREEFALL_TRIP_MAX_MS)
+        fallCategories |= FALL_TRIP;
+    if (freefallDurationMs >= FREEFALL_ELEVATED_MIN_MS)
+        fallCategories |= FALL_ELEVATED;
+
+    // Impact characteristics
+    if (peakImpactG >= IMPACT_G_HIGH)
+        fallCategories |= FALL_HIGH_IMPACT;
+    if (peakJerk >= JERK_HARD_SURFACE_GS)
+        fallCategories |= FALL_HARD_SURFACE;
+    if (impactPhaseDuration >= IMPACT_PROLONGED_MS)
+        fallCategories |= FALL_PROLONGED_IMPACT;
+    if (impactSpikeCount >= 2)
+        fallCategories |= FALL_MULTI_IMPACT;
+    if (gyroAtPeakG >= ROT_AT_IMPACT_THRESHOLD)
+        fallCategories |= FALL_HIGH_ROT_IMPACT;
+
+    // Freefall phase
+    if (freefallMaxGyro >= TUMBLE_GYRO_THRESHOLD)
+        fallCategories |= FALL_TUMBLE;
+
+    // Pre-fall state
+    if (fabsf(preFallAccelEMA - 1.0f) < STATIONARY_EMA_BAND)
+        fallCategories |= FALL_FROM_STATIONARY;
+    if (lastNormalAccelG >= SUDDEN_ONSET_MIN_G)
+        fallCategories |= FALL_SUDDEN_ONSET;
+
+    // Repeated event
+    if (lastSOSTime > 0 && (millis() - lastSOSTime) < REPEAT_FALL_WINDOW_MS)
+        fallCategories |= FALL_REPEATED;
+
+    LOG_INFO("FallDetection: Categories=0x%04X dur=%lums peak=%.2fg "
+             "jerk=%.1fg/s gyroFF=%.2f spikes=%d",
+             fallCategories, freefallDurationMs, peakImpactG,
+             peakJerk, freefallMaxGyro, impactSpikeCount);
+}
+
+int FallDetectionModule::computeLethalScore() const
+{
+    int score = 0;
+
+    if (fallCategories & FALL_ELEVATED)         score += 30;
+    if (fallCategories & FALL_HIGH_IMPACT)      score += 25 + (int)((peakImpactG - IMPACT_G_HIGH) * 3.0f);
+    if (fallCategories & FALL_TUMBLE)           score += 15;
+    if (fallCategories & FALL_MULTI_IMPACT)     score += 20;
+    if (fallCategories & FALL_HARD_SURFACE)     score += 10;
+    if (fallCategories & FALL_PROLONGED_IMPACT) score += 15;
+    if (fallCategories & FALL_HIGH_ROT_IMPACT)  score += 10;
+    if (fallCategories & FALL_REPEATED)         score += 25;
+    if (fallCategories & FALL_SUDDEN_ONSET)     score += 5;
+
+    // Syncope signature: stationary + sudden onset together
+    if ((fallCategories & (FALL_FROM_STATIONARY | FALL_SUDDEN_ONSET)) ==
+                          (FALL_FROM_STATIONARY | FALL_SUDDEN_ONSET))
+        score += 20;
+
+    return score;
+}
+
+const char *FallDetectionModule::severityString() const
+{
+    return (severity == SEVERITY_LETHAL) ? "LETHAL" : "NON_LETHAL";
+}
+
+// ── Alarm / SOS ────────────────────────────────────────────────────────────
 
 void FallDetectionModule::cancelFallAlarm()
 {
     if (currentState == PRE_ALARM) {
-        LOG_INFO("FallDetection: Fall alarm cancelled by user");
+        LOG_INFO("FallDetection: Alarm cancelled by user");
         deactivatePreAlarm();
         transitionToState(MONITORING);
     }
 }
 
-// F21: SOS exit path — cancels auto-SOS (called by SOS hold 3s)
 void FallDetectionModule::cancelAutoSOS()
 {
     if (currentState == SOS_TRIGGERED) {
         LOG_INFO("FallDetection: Auto-SOS cancelled by user");
-
 #ifdef PIN_BUZZER
         BuzzerManager::instance().write(0);
         BuzzerManager::instance().release(OWNER_FALL);
 #endif
-
 #ifdef PIN_VIBRATOR
         digitalWrite(PIN_VIBRATOR, LOW);
 #endif
-
 #ifdef LED_PIN
         digitalWrite(LED_PIN, LOW);
 #endif
-
         sosBuzzerOn = false;
         transitionToState(MONITORING);
     }
@@ -105,50 +319,36 @@ void FallDetectionModule::cancelAutoSOS()
 
 void FallDetectionModule::activatePreAlarm()
 {
-    LOG_WARN("FallDetection: PRE-ALARM activated - 30s countdown");
-    
+    LOG_WARN("FallDetection: PRE-ALARM — 30s countdown, severity=%s cats=0x%04X",
+             severityString(), fallCategories);
 #ifdef PIN_BUZZER
-    // F4: Use BuzzerManager instead of raw LEDC
     BuzzerManager::instance().acquire(OWNER_FALL);
-    BuzzerManager::instance().write(128); // Initial beep
+    BuzzerManager::instance().write(128);
 #endif
-    
-    // Activate vibration alarm
 #ifdef PIN_VIBRATOR
     digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
-
-    isBeepOn = true; // F3: Track beep state
+    isBeepOn = true;
 }
 
 void FallDetectionModule::deactivatePreAlarm()
 {
-    LOG_INFO("FallDetection: Pre-alarm deactivated");
-    
 #ifdef PIN_BUZZER
-    // F4: Use BuzzerManager
     BuzzerManager::instance().write(0);
     BuzzerManager::instance().release(OWNER_FALL);
 #endif
-    
-    // Stop vibration
 #ifdef PIN_VIBRATOR
     digitalWrite(PIN_VIBRATOR, LOW);
 #endif
-
     isBeepOn = false;
 }
 
-// F3: Robust alarm feedback with explicit isBeepOn state tracking
 void FallDetectionModule::updateAlarmFeedback()
 {
     unsigned long elapsed = millis() - lastAlarmBeepTime;
-
     if (elapsed >= ALARM_BEEP_INTERVAL) {
-        // Start new beep cycle
         lastAlarmBeepTime = millis();
         isBeepOn = true;
-
 #ifdef PIN_BUZZER
         BuzzerManager::instance().write(128);
 #endif
@@ -156,9 +356,7 @@ void FallDetectionModule::updateAlarmFeedback()
         digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
     } else if (isBeepOn && elapsed >= 200) {
-        // End beep after 200ms (200ms on, 800ms off)
         isBeepOn = false;
-
 #ifdef PIN_BUZZER
         BuzzerManager::instance().write(0);
 #endif
@@ -170,237 +368,265 @@ void FallDetectionModule::updateAlarmFeedback()
 
 void FallDetectionModule::triggerAutoSOS()
 {
-    LOG_CRIT("FallDetection: AUTO-SOS TRIGGERED!");
-    
-    // Extract node position once for both position and text packets
+    lastSOSTime = millis();
+    LOG_CRIT("FallDetection: AUTO-SOS! severity=%s cats=0x%04X peak=%.2fg resp=%lums",
+             severityString(), fallCategories, peakImpactG, responseTimeMs);
+
     meshtastic_Position pos = meshtastic_Position_init_default;
-    meshtastic_NodeInfoLite *node = nodeDB->getNodeNum() ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
-    
-    bool hasPosition = false;
-    float latitude = 0.0f;
-    float longitude = 0.0f;
-    
+    meshtastic_NodeInfoLite *node = nodeDB->getNodeNum()
+        ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
+
+    bool  hasPosition = false;
+    float latitude = 0.0f, longitude = 0.0f;
+
     if (node && nodeDB->hasValidPosition(node)) {
-        pos.latitude_i = node->position.latitude_i;
+        pos.latitude_i  = node->position.latitude_i;
         pos.longitude_i = node->position.longitude_i;
-        pos.altitude = node->position.altitude;
-        pos.time = node->position.time;
-        
-        // Convert integer coordinates to float for text message
-        latitude = pos.latitude_i * 1e-7;
-        longitude = pos.longitude_i * 1e-7;
-        hasPosition = true;
+        pos.altitude    = node->position.altitude;
+        pos.time        = node->position.time;
+        latitude        = pos.latitude_i * 1e-7f;
+        longitude       = pos.longitude_i * 1e-7f;
+        hasPosition     = true;
     }
-    
-    //=== 1. Send Position Packet ===
+
+    // Position packet
     meshtastic_MeshPacket *posPacket = allocDataPacket();
-    posPacket->channel = 0; // Primary channel (broadcast)
-    posPacket->priority = meshtastic_MeshPacket_Priority_MAX; // F19: MAX priority
-    posPacket->want_ack = false; // No ACK for broadcast emergency
-    posPacket->decoded.portnum = meshtastic_PortNum_POSITION_APP;
-    
-    // Encode and send position packet
+    posPacket->channel              = 0;
+    posPacket->priority             = meshtastic_MeshPacket_Priority_MAX;
+    posPacket->want_ack             = false;
+    posPacket->decoded.portnum      = meshtastic_PortNum_POSITION_APP;
     posPacket->decoded.payload.size = pb_encode_to_bytes(
-        posPacket->decoded.payload.bytes,
-        sizeof(posPacket->decoded.payload.bytes),
-        &meshtastic_Position_msg,
-        &pos
-    );
-    
-    if (service) {
-        service->sendToMesh(posPacket);
-    }
-    
-    //=== 2. Send SOS Text Message (Task 9.7, REQ-MSG-04.2) ===
+        posPacket->decoded.payload.bytes, sizeof(posPacket->decoded.payload.bytes),
+        &meshtastic_Position_msg, &pos);
+    if (service) service->sendToMesh(posPacket);
+
+    // SOS text: "SOS [LETHAL|0x0246] - [lat],[lon]"
+    // Category hex lets responders/logs reconstruct exactly what triggered.
     meshtastic_MeshPacket *textPacket = allocDataPacket();
-    textPacket->channel = 0;
-    textPacket->priority = meshtastic_MeshPacket_Priority_MAX; // F19: MAX priority
-    textPacket->want_ack = false;
+    textPacket->channel         = 0;
+    textPacket->priority        = meshtastic_MeshPacket_Priority_MAX;
+    textPacket->want_ack        = false;
     textPacket->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
-    
-    // Format per REQ-MSG-04.2: "SOS - [Latitude], [Longitude]"
-    char message[100];
-    size_t msgLen;
-    if (hasPosition) {
-        msgLen = snprintf(message, sizeof(message), "SOS - [%.6f], [%.6f]", latitude, longitude);
-    } else {
-        msgLen = snprintf(message, sizeof(message), "SOS - [No GPS]");
-    }
-    
-    // Safety: ensure we don't exceed buffer (snprintf returns would-be length)
-    if (msgLen >= sizeof(message)) {
-        msgLen = sizeof(message) - 1;
-    }
-    
+
+    char message[120];
+    size_t msgLen = hasPosition
+        ? snprintf(message, sizeof(message), "SOS [%s|0x%04X] - [%.6f],[%.6f]",
+                   severityString(), fallCategories, latitude, longitude)
+        : snprintf(message, sizeof(message), "SOS [%s|0x%04X] - [No GPS]",
+                   severityString(), fallCategories);
+    if (msgLen >= sizeof(message)) msgLen = sizeof(message) - 1;
+
     memcpy(textPacket->decoded.payload.bytes, message, msgLen);
     textPacket->decoded.payload.size = msgLen;
-    
-    if (service) {
-        service->sendToMesh(textPacket);
-    }
-    
-    LOG_INFO("FallDetection: Sent SOS text: %s", message);
-    
-    //=== 3. Activate Local Alarms ===
-    // F12: Start SOS Morse code LUT pattern
+    if (service) service->sendToMesh(textPacket);
+
+    LOG_INFO("FallDetection: Sent: %s", message);
+
     sosPatternStartTime = millis();
     sosBuzzerOn = false;
-
 #ifdef PIN_BUZZER
-    // F4: Acquire buzzer via BuzzerManager (already acquired during PRE_ALARM, re-acquire for safety)
     BuzzerManager::instance().acquire(OWNER_FALL);
 #endif
-
-    // F22: Vibrator will be pulsed in sync with SOS pattern in runOnce()
-    // (no continuous HIGH here — handled by SOS_TRIGGERED case)
 }
 
-// F12: LUT-based SOS Morse pattern — O(1) per call, no loop/stack allocation
 void FallDetectionModule::updateSOSBuzzerPattern()
 {
-#ifndef PIN_BUZZER
-    return; // No buzzer available
-#else
-    uint32_t elapsed = millis() - sosPatternStartTime;
-    uint8_t index = (elapsed / 200) % SOS_LUT_LEN;
-    bool shouldBeOn = SOS_LUT[index];
-    
-    if (shouldBeOn != sosBuzzerOn) {
-        BuzzerManager::instance().write(shouldBeOn ? 128 : 0);
-        sosBuzzerOn = shouldBeOn;
+#ifdef PIN_BUZZER
+    uint32_t elapsed  = millis() - sosPatternStartTime;
+    uint8_t  index    = (elapsed / 200) % SOS_LUT_LEN;
+    bool     shouldOn = SOS_LUT[index];
+    if (shouldOn != sosBuzzerOn) {
+        BuzzerManager::instance().write(shouldOn ? 128 : 0);
+        sosBuzzerOn = shouldOn;
     }
 #endif
 }
+
+// ── Main loop ──────────────────────────────────────────────────────────────
 
 int32_t FallDetectionModule::runOnce()
 {
-    // F5: Lazy init — attempt MPU6050 init in thread context with 5s retry
-    if (!mpuInitialized) {
-        Wire.begin(I2C_SDA, I2C_SCL);
-        if (!mpu.begin(0x68)) {
-            LOG_WARN("FallDetection: MPU6050 not ready, retrying in 5s");
-            return 5000; // Retry in 5 seconds
-        }
-        
-        // Configure MPU6050 for fall detection
-        mpu.setAccelerometerRange(MPU6050_RANGE_8_G);  // ±8g range for impact detection
-        mpu.setGyroRange(MPU6050_RANGE_500_DEG);        // ±500°/s for rotation detection
-        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);     // Low-pass filter to reduce noise
-        
-        mpuInitialized = true;
-        LOG_INFO("FallDetection: MPU6050 initialized, state=MONITORING");
+    if (!sensorInitialized) {
+        sensor = ICM20948Singleton::GetInstance();
 
-        // Safety: ensure vibrator pin is OUTPUT (may already be set by TrekLinkButtonModule)
+        if (sensor->status != ICM_20948_Stat_Ok) {
+            Wire.begin(I2C_SDA, I2C_SCL);
+            extern ScanI2C::DeviceAddress accelerometer_found;
+            ScanI2C::FoundDevice found(ScanI2C::DeviceType::ICM20948, accelerometer_found);
+            if (!sensor->init(found)) {
+                LOG_WARN("FallDetection: ICM-20948 not ready, retry in 5s");
+                return 5000;
+            }
+        }
+
+        sensor->sleep(false);
+        sensor->setFullScaleRangeAccel(gpm16);
+        sensor->setFullScaleRangeGyro(dps2000);
+        sensorInitialized = true;
+        mlInitialized     = initML();
+
 #ifdef PIN_VIBRATOR
         pinMode(PIN_VIBRATOR, OUTPUT);
         digitalWrite(PIN_VIBRATOR, LOW);
 #endif
+        LOG_INFO("FallDetection: ICM-20948 ready at gpm16/dps2000  ML=%s",
+                 mlInitialized ? "on" : "off");
     }
 
-    // F14: In SOS_TRIGGERED, skip I2C reads — only update buzzer/vibrator/LED
+    // SOS state: skip I2C, just drive outputs
     if (currentState == SOS_TRIGGERED) {
         updateSOSBuzzerPattern();
-
 #ifdef PIN_VIBRATOR
-        // F22: Pulse vibrator in sync with SOS pattern (saves ~50% motor power)
         digitalWrite(PIN_VIBRATOR, sosBuzzerOn ? HIGH : LOW);
 #endif
-
 #ifdef LED_PIN
-        // F23: 2Hz LED strobe during auto-SOS
         digitalWrite(LED_PIN, (millis() / 250) % 2);
 #endif
-
-        return 200; // F14: Align with 200ms LUT slots, no I2C needed
+        return 200;
     }
 
-    // Read sensor data (only for non-SOS states)
-    sensors_event_t accel, gyro, temp;
-    mpu.getEvent(&accel, &gyro, &temp);
-    
-    float totalAccel = calculateTotalAcceleration(accel);
-    float totalGyro = calculateTotalGyro(gyro);
+    float totalAccel_g, totalGyro_rads;
+    if (!readSensor(totalAccel_g, totalGyro_rads))
+        return 50;
+
     unsigned long now = millis();
-    
+
     switch (currentState) {
+
     case MONITORING:
-        // Detect freefall (total acceleration < 0.5g)
-        if (totalAccel < FREEFALL_THRESHOLD) {
+        // Build EMA of accel to detect stationary-before-fall
+        preFallAccelEMA  = (1.0f - EMA_ALPHA) * preFallAccelEMA + EMA_ALPHA * totalAccel_g;
+        lastNormalAccelG = totalAccel_g;
+
+        if (totalAccel_g < FREEFALL_THRESHOLD) {
+            resetFallData();
             freefallStartTime = now;
             transitionToState(FREEFALL_DETECTED);
-            LOG_DEBUG("FallDetection: Freefall detected (%.2fg)", totalAccel);
+            LOG_DEBUG("FallDetection: Freefall start %.2fg (EMA=%.2fg last=%.2fg)",
+                      totalAccel_g, preFallAccelEMA, lastNormalAccelG);
         }
         break;
-        
+
     case FREEFALL_DETECTED:
-        // Check if still in freefall
-        if (totalAccel >= FREEFALL_THRESHOLD) {
-            // Freefall ended, check duration
-            unsigned long freefallDuration = now - freefallStartTime;
-            
-            if (freefallDuration >= FREEFALL_MIN_DURATION) {
-                // Valid freefall, now wait for impact
+        if (totalGyro_rads > freefallMaxGyro)
+            freefallMaxGyro = totalGyro_rads;
+
+        if (totalAccel_g >= FREEFALL_THRESHOLD) {
+            unsigned long dur = now - freefallStartTime;
+            if (dur >= FREEFALL_MIN_DURATION) {
                 impactTime = now;
+                prevAccelG = totalAccel_g;
                 transitionToState(IMPACT_DETECTED);
-                LOG_INFO("FallDetection: Freefall confirmed, waiting for impact");
+                LOG_INFO("FallDetection: Freefall %lums maxGyro=%.2frad/s", dur, freefallMaxGyro);
             } else {
-                // Too short, false alarm
                 transitionToState(MONITORING);
-                LOG_DEBUG("FallDetection: Freefall too short (%lums), ignoring", freefallDuration);
             }
         }
         break;
-        
-    case IMPACT_DETECTED:
-        // Look for high-G impact within 2 seconds of freefall
-        if (totalAccel > IMPACT_THRESHOLD) {
+
+    case IMPACT_DETECTED: {
+        // Jerk: rate of accel change between poll ticks (g/s)
+        float jerk = fabsf(totalAccel_g - prevAccelG) / POLL_INTERVAL_S;
+        if (jerk > peakJerk) peakJerk = jerk;
+        prevAccelG = totalAccel_g;
+
+        // Peak G and gyro at that moment
+        if (totalAccel_g > peakImpactG) {
+            peakImpactG = totalAccel_g;
+            gyroAtPeakG = totalGyro_rads;
+        }
+
+        // Spike counting and phase duration
+        if (totalAccel_g > IMPACT_THRESHOLD) {
+            if (!inImpactSpike) {
+                inImpactSpike = true;
+                impactSpikeCount++;
+                spikeStartTime = now;
+                if (!impactWindowActive) {
+                    impactWindowActive = true;
+                    impactWindowStart  = now;
+                }
+            }
+        } else if (inImpactSpike) {
+            inImpactSpike        = false;
+            impactPhaseDuration += (now - spikeStartTime);
+        }
+
+        bool windowDone = impactWindowActive && (now - impactWindowStart) >= IMPACT_WINDOW_MS;
+        bool timedOut   = (now - impactTime) >= IMPACT_TIMEOUT_MS;
+
+        if (windowDone) {
+            // Close any open spike
+            if (inImpactSpike) {
+                impactPhaseDuration += (now - spikeStartTime);
+                inImpactSpike = false;
+            }
+
+            // ML Stage 1 confirmation — reject noise-triggered events
+            if (!runMLInference()) {
+                LOG_INFO("FallDetection: ML rejected event — back to MONITORING");
+                transitionToState(MONITORING);
+                break;
+            }
+
+            unsigned long freefallDuration = impactTime - freefallStartTime;
+            computeFallCategories(freefallDuration);
+            int score = computeLethalScore();
+            severity  = (score >= LETHAL_SCORE_THRESHOLD) ? SEVERITY_LETHAL : SEVERITY_NON_LETHAL;
+            LOG_INFO("FallDetection: Lethal score=%d -> %s", score, severityString());
             inactivityStartTime = now;
+            responseTimeMs      = 0;
             transitionToState(INACTIVITY_DETECTED);
-            LOG_WARN("FallDetection: Impact detected (%.2fg), monitoring for inactivity", totalAccel);
-        } else if ((now - impactTime) > 2000) {
-            // No impact detected within 2s, false alarm
+        } else if (timedOut) {
+            LOG_DEBUG("FallDetection: Impact timeout, no spike — back to MONITORING");
             transitionToState(MONITORING);
-            LOG_DEBUG("FallDetection: No impact after freefall, false alarm");
         }
         break;
-        
+    }
+
     case INACTIVITY_DETECTED:
-        // Check for movement/activity
-        if (!checkInactivity(accel, gyro)) {
-            // User is moving, cancel fall detection
+        if (!checkInactivity(totalAccel_g, totalGyro_rads)) {
+            responseTimeMs = now - inactivityStartTime;
+
+            // Quick response can de-escalate a borderline lethal score
+            if (responseTimeMs < RESPONSE_FAST_MS && severity == SEVERITY_LETHAL) {
+                int score = computeLethalScore();
+                if (score < LETHAL_SCORE_THRESHOLD + 10)
+                    severity = SEVERITY_NON_LETHAL;
+            }
+
+            LOG_INFO("FallDetection: Movement at %lums -> %s cats=0x%04X",
+                     responseTimeMs, severityString(), fallCategories);
             transitionToState(MONITORING);
-            LOG_INFO("FallDetection: Movement detected, user is OK");
+
         } else if ((now - inactivityStartTime) >= INACTIVITY_DURATION) {
-            // Inactivity threshold reached, enter pre-alarm
+            responseTimeMs    = INACTIVITY_DURATION;
             prealarmStartTime = now;
             lastAlarmBeepTime = now;
             transitionToState(PRE_ALARM);
             activatePreAlarm();
         }
         break;
-        
+
     case PRE_ALARM:
-        // Update alarm feedback (beeping/vibration)
         updateAlarmFeedback();
-        
-        // Check for timeout
+
+        // Force lethal if still not moving 15s after the fall
+        if ((now - inactivityStartTime) >= RESPONSE_LETHAL_MS)
+            severity = SEVERITY_LETHAL;
+
         if ((now - prealarmStartTime) >= PREALARM_TIMEOUT) {
-            // Timeout reached, trigger auto-SOS
+            deactivatePreAlarm();
             transitionToState(SOS_TRIGGERED);
             triggerAutoSOS();
         }
-        // Note: User cancellation handled by cancelFallAlarm() (any button)
         break;
 
     default:
         break;
     }
-    
-    // F14: Adaptive polling — 2Hz idle, 10Hz active detection
-    switch (currentState) {
-        case MONITORING:    return 500;   // 2Hz idle (saves 80% I2C reads)
-        default:            return 100;   // 10Hz active detection
-    }
+
+    return 20;  // 50 Hz — matches ML training sample rate
 }
 
-#endif // MPU6050 available
+#endif // ICM-20948 available

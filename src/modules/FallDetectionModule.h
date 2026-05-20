@@ -4,111 +4,186 @@
 #include "concurrency/OSThread.h"
 #include "configuration.h"
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<Adafruit_MPU6050.h>)
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<ICM_20948.h>)
 
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
+#include "motion/ICM20948Sensor.h"
+#include "detect/ScanI2C.h"
 #include <Wire.h>
+#include "fall_detection_model.h"
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
-// TrekLink message type discriminator (F8 - shared with TrekLinkButtonModule.h)
 #ifndef TREKLINK_MSG_FALL
 #define TREKLINK_MSG_FALL 0x02
 #endif
 
-/**
- * Fall Detection Module for TrekLink
- * Monitors MPU6050 accelerometer/gyroscope for fall patterns
- * Triggers automatic SOS if user becomes unconscious after fall
- */
+// ── Fall category flags ────────────────────────────────────────────────────
+// Multiple flags can be set on a single fall event.
+// Used for logging and as weighted inputs to the lethal meter.
+// Calibrate all thresholds via lab drop-test for TrekLink mounting position.
+enum FallCategoryFlags : uint16_t {
+    FALL_NONE             = 0x0000,
+    FALL_TRIP             = 0x0001,  // freefall < FREEFALL_TRIP_MAX_MS (stumble)
+    FALL_ELEVATED         = 0x0002,  // freefall > FREEFALL_ELEVATED_MIN_MS (airborne)
+    FALL_HIGH_IMPACT      = 0x0004,  // peak G > IMPACT_G_HIGH
+    FALL_TUMBLE           = 0x0008,  // high gyro during freefall phase
+    FALL_MULTI_IMPACT     = 0x0010,  // >= 2 impact spikes (stairs / bouncing)
+    FALL_HARD_SURFACE     = 0x0020,  // high jerk at impact
+    FALL_PROLONGED_IMPACT = 0x0040,  // impact phase > IMPACT_PROLONGED_MS (rolling)
+    FALL_HIGH_ROT_IMPACT  = 0x0080,  // high gyro at the moment of peak G
+    FALL_SUDDEN_ONSET     = 0x0100,  // abrupt freefall entry — no stumble warning
+    FALL_FROM_STATIONARY  = 0x0200,  // was still before falling (syncope risk)
+    FALL_REPEATED         = 0x0400,  // another SOS within REPEAT_FALL_WINDOW_MS
+};
+
+enum FallSeverity : uint8_t {
+    SEVERITY_NON_LETHAL = 0,
+    SEVERITY_LETHAL     = 1,
+};
 
 class FallDetectionModule : public SinglePortModule, public concurrency::OSThread
 {
   public:
     FallDetectionModule();
 
-    /**
-     * Cancel fall detection alarm during PRE_ALARM (called by any button press)
-     */
     void cancelFallAlarm();
-
-    /**
-     * Cancel auto-SOS during SOS_TRIGGERED state (F21: SOS exit path)
-     * Called by SOS button hold (3s) to silence buzzer/vibrator/LED
-     */
     void cancelAutoSOS();
-
-    /**
-     * Check if fall detection is currently in pre-alarm state
-     */
-    bool isInPreAlarm() const { return currentState == PRE_ALARM; }
-
-    /**
-     * Check if fall detection is in SOS_TRIGGERED state (F21)
-     */
+    bool isInPreAlarm()     const { return currentState == PRE_ALARM; }
     bool isInSOSTriggered() const { return currentState == SOS_TRIGGERED; }
 
   protected:
     virtual int32_t runOnce() override;
 
   private:
-    // Fall detection state machine
     enum FallState {
-        MONITORING,          // Normal operation, watching for falls
-        FREEFALL_DETECTED,   // Detected freefall condition (<0.5g)
-        IMPACT_DETECTED,     // Detected impact after freefall (>3g)
-        INACTIVITY_DETECTED, // No movement detected after impact
-        PRE_ALARM,           // Countdown active, waiting for user cancel
-        SOS_TRIGGERED        // Auto-SOS sent, alarm active (F21: has exit path)
+        MONITORING,
+        FREEFALL_DETECTED,
+        IMPACT_DETECTED,
+        INACTIVITY_DETECTED,
+        PRE_ALARM,
+        SOS_TRIGGERED
     };
 
-    FallState currentState;
-    Adafruit_MPU6050 mpu;
-    bool mpuInitialized; // F5: Lazy init flag
+    FallState        currentState;
+    ICM20948Singleton *sensor;
+    bool             sensorInitialized;
 
-    // Timing trackers
+    // ── State machine timestamps ───────────────────────────────────────────
     unsigned long freefallStartTime;
     unsigned long impactTime;
+    unsigned long impactWindowStart;   // when first spike seen in IMPACT_DETECTED
+    unsigned long spikeStartTime;      // start of the current impact spike
     unsigned long inactivityStartTime;
     unsigned long prealarmStartTime;
     unsigned long lastAlarmBeepTime;
-    bool isBeepOn; // F3: Alarm feedback robustness flag
-    
-    // SOS Morse code pattern state (F12: LUT-based)
     unsigned long sosPatternStartTime;
+    unsigned long lastSOSTime;         // timestamp of last SOS — for FALL_REPEATED
+
+    // ── Buzzer / vibrator state ────────────────────────────────────────────
+    bool isBeepOn;
     bool sosBuzzerOn;
 
-    // Detection thresholds (based on design.md)
-    static constexpr float FREEFALL_THRESHOLD = 0.5f;       // g (<0.5g indicates freefall)
-    static constexpr float IMPACT_THRESHOLD = 3.0f;         // g (>3g indicates impact)
-    static constexpr float GYRO_STILLNESS_THRESHOLD = 0.1f; // rad/s (gyro movement threshold)
-    static constexpr unsigned long FREEFALL_MIN_DURATION = 500;  // ms
-    static constexpr unsigned long INACTIVITY_DURATION = 10000;  // 10 seconds
-    static constexpr unsigned long PREALARM_TIMEOUT = 30000;     // 30 seconds
-    static constexpr unsigned long ALARM_BEEP_INTERVAL = 1000;   // 1 second beep interval
-    
-    // F12: SOS Morse LUT — 1=ON, 0=OFF. Each index = 200ms slot.
-    // Pattern: ... --- ... (gap) = 28 slots × 200ms = 5600ms total
-    static constexpr bool SOS_LUT[28] = {
-        1,0,1,0,1,0,                       // S (...) — 1200ms
-        1,1,1,0,1,1,1,0,1,1,1,0,           // O (---) — 2400ms
-        1,0,1,0,1,0,                       // S (...) — 1200ms
-        0,0,0,0                             // Gap    —  800ms
+    // ── Pre-fall activity tracking ─────────────────────────────────────────
+    float preFallAccelEMA;    // exponential moving average of accel in MONITORING
+    float lastNormalAccelG;   // last sample before freefall threshold crossed
+
+    // ── Freefall phase ─────────────────────────────────────────────────────
+    float freefallMaxGyro;    // peak gyro magnitude seen during freefall
+
+    // ── Impact phase ──────────────────────────────────────────────────────
+    float         peakImpactG;          // max accel magnitude in impact window
+    float         gyroAtPeakG;          // gyro magnitude at the moment of peakImpactG
+    float         peakJerk;             // max |Δaccel| / POLL_INTERVAL_S (g/s)
+    float         prevAccelG;           // previous sample for jerk calculation
+    unsigned long impactPhaseDuration;  // accumulated ms above IMPACT_THRESHOLD
+    int           impactSpikeCount;     // how many times accel crossed threshold
+    bool          inImpactSpike;        // currently above IMPACT_THRESHOLD
+    bool          impactWindowActive;   // at least one spike has been seen
+
+    // ── Severity results ───────────────────────────────────────────────────
+    uint16_t     fallCategories;  // bitmask set by computeFallCategories()
+    FallSeverity severity;        // final LETHAL / NON_LETHAL decision
+    unsigned long responseTimeMs; // ms from inactivity start to first movement
+
+    // ── ICM-20948 scale ────────────────────────────────────────────────────
+    static constexpr float ACCEL_LSB_PER_G  = 2048.0f;
+    static constexpr float GYRO_LSB_PER_DPS = 16.384f;
+    static constexpr float DEG_TO_RAD_F     = 0.017453292519943f;
+    static constexpr float POLL_INTERVAL_S  = 0.02f;  // 50 Hz — matches ML training rate
+
+    // ── Detection thresholds ───────────────────────────────────────────────
+    static constexpr float         FREEFALL_THRESHOLD       = 0.5f;   // g
+    static constexpr float         IMPACT_THRESHOLD         = 3.0f;   // g
+    static constexpr float         GYRO_STILLNESS_THRESHOLD = 0.1f;   // rad/s
+    static constexpr unsigned long FREEFALL_MIN_DURATION    = 80;     // ms — ignore noise dips
+    static constexpr unsigned long INACTIVITY_DURATION      = 10000;  // ms
+    static constexpr unsigned long PREALARM_TIMEOUT         = 30000;  // ms
+    static constexpr unsigned long ALARM_BEEP_INTERVAL      = 1000;   // ms
+
+    // ── Fall characterization — calibrate via lab drop-test ────────────────
+    static constexpr unsigned long FREEFALL_TRIP_MAX_MS     = 200;    // < this = FALL_TRIP
+    static constexpr unsigned long FREEFALL_ELEVATED_MIN_MS = 500;    // > this = FALL_ELEVATED
+    static constexpr unsigned long IMPACT_WINDOW_MS         = 1000;   // characterization window after first spike
+    static constexpr unsigned long IMPACT_TIMEOUT_MS        = 3000;   // give up if no spike
+    static constexpr unsigned long IMPACT_PROLONGED_MS      = 400;    // ms above threshold = FALL_PROLONGED_IMPACT
+    static constexpr float         IMPACT_G_HIGH            = 4.0f;   // g — FALL_HIGH_IMPACT
+    static constexpr float         TUMBLE_GYRO_THRESHOLD    = 2.0f;   // rad/s during freefall
+    static constexpr float         ROT_AT_IMPACT_THRESHOLD  = 1.5f;   // rad/s at peak G
+    static constexpr float         JERK_HARD_SURFACE_GS     = 30.0f;  // g/s — FALL_HARD_SURFACE
+    static constexpr float         EMA_ALPHA                = 0.01f;  // adjusted for 50 Hz (same 2 s time constant)
+    static constexpr float         STATIONARY_EMA_BAND      = 0.15f;  // within ±this of 1g = still
+    static constexpr float         SUDDEN_ONSET_MIN_G       = 1.2f;   // accel before drop > this = sudden
+
+    // ── Lethal meter ───────────────────────────────────────────────────────
+    static constexpr int           LETHAL_SCORE_THRESHOLD   = 50;
+    static constexpr unsigned long REPEAT_FALL_WINDOW_MS    = 300000; // 5 min
+
+    // ── Post-fall response ─────────────────────────────────────────────────
+    static constexpr unsigned long RESPONSE_FAST_MS         = 3000;   // < this = quick response
+    static constexpr unsigned long RESPONSE_LETHAL_MS       = 15000;  // > this = force LETHAL
+
+    // ── ML Stage 1 — inference ────────────────────────────────────────────
+    static constexpr int   IMU_BUFFER_LEN    = 128;
+    static constexpr int   TENSOR_ARENA_SIZE = 24 * 1024;
+    // Z-score params from norm_stats_binary.json — axes: ax ay az gx gy gz
+    static constexpr float NORM_MEAN[6] = { 0.250f, -5.139f, -0.860f, -0.012f,  0.053f, -0.002f };
+    static constexpr float NORM_STD[6]  = { 4.921f,  6.045f,  5.358f,  0.710f,  0.651f,  0.480f };
+
+    float                     imuBuffer[IMU_BUFFER_LEN][6];
+    int                       bufferHead;
+    bool                      bufferFull;
+    bool                      mlInitialized;
+    tflite::MicroInterpreter *interpreter;
+    TfLiteTensor             *inputTensor;
+
+    bool initML();
+    void fillBuffer(float ax, float ay, float az, float gx, float gy, float gz);
+    bool runMLInference();
+
+    // ── SOS buzzer LUT ────────────────────────────────────────────────────
+    static constexpr bool    SOS_LUT[28] = {
+        1,0,1,0,1,0,
+        1,1,1,0,1,1,1,0,1,1,1,0,
+        1,0,1,0,1,0,
+        0,0,0,0
     };
     static constexpr uint8_t SOS_LUT_LEN = 28;
 
-    // Helper methods
-    void transitionToState(FallState newState);
-    float calculateTotalAcceleration(sensors_event_t &accel);
-    float calculateTotalGyro(sensors_event_t &gyro);
-    bool checkInactivity(sensors_event_t &accel, sensors_event_t &gyro);
-    
-    void activatePreAlarm();
-    void deactivatePreAlarm();
-    void triggerAutoSOS();
-    void updateAlarmFeedback();
-    void updateSOSBuzzerPattern();
+    void         transitionToState(FallState newState);
+    bool         readSensor(float &totalAccel_g, float &totalGyro_rads);
+    bool         checkInactivity(float totalAccel_g, float totalGyro_rads);
+    void         resetFallData();
+    void         computeFallCategories(unsigned long freefallDurationMs);
+    int          computeLethalScore() const;
+    const char  *severityString() const;
+    void         activatePreAlarm();
+    void         deactivatePreAlarm();
+    void         triggerAutoSOS();
+    void         updateAlarmFeedback();
+    void         updateSOSBuzzerPattern();
 };
 
 extern FallDetectionModule *fallDetectionModule;
 
-#endif // MPU6050 available
+#endif // ICM-20948 available

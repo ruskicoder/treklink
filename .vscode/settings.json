@@ -10,5 +10,7 @@
   },
   "[powershell]": {
     "editor.defaultFormatter": "ms-vscode.powershell"
-  }
+  },
+  "claudeCode.allowDangerouslySkipPermissions": true,
+  "git.ignoreLimitWarning": true
 }
