@@ -53,3 +53,11 @@ CMakeLists.txt
 
 # PYTHONPATH used by the Nix shell
 .python3
+
+# Fall detection — large dataset files, never commit these
+Fall Detection/DATASET/processed/
+Fall Detection/DATASET/raw/
+Fall Detection/MagicWand-TFLite-ESP32-MPU6050/train/data/
+Fall Detection/MagicWand-TFLite-ESP32-MPU6050/train/kaggle_training.zip
+Fall Detection/MagicWand-TFLite-ESP32-MPU6050/train/netmodels/
+Fall Detection/MagicWand-TFLite-ESP32-MPU6050/train/logs/
