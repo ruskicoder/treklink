@@ -1,49 +1,165 @@
-Your purchase was confirmed! Next, fill in some info get your order started
-The freelancer will need this info before they can start working on your order:
+# TrekLink v2.0 — PCB Freelancer Brief & Requirements
 
-1. If you’re ordering for a business, what’s your industry?(Optional)
-Select the project that best fits your needs
+> **Revision:** 2.1  
+> **Date:** 2026-05-28  
+> **Project:** Custom 4-Layer PCB design for TrekLink v2.0 off-grid communicator.  
+> **Deliverable Format:** Complete KiCad Project (v8.0+ preferred). Must be directly compatible with JLCPCB PCBA service.
+> **Reference Documents:**  
+> - `v2.0-component-list.md` — Complete BOM with LCSC part numbers  
+> - `v2.0-pcb-design-requirements.md` — Detailed PCB layout and enclosure constraints  
+> - `implementation-plan-2.0.md` — Architecture & pin mapping
 
-Save industry to my profile.
-2. Is this order part of a bigger project you're working on?(Optional)
-Yes
-Don’t see what you’re looking for? Start typing to find your project
+---
 
-3. What type of Project you want that I design for you?
-Off-grid LoRa mesh communication device (TrekLink v2.0) running Meshtastic. Integrates ESP32-S3-WROOM-1-N8R8, SX1262 LoRa, GNSS GPS, IMU, and OLED. Fits a 100x70mm 4-layer PCB inside a 30mm thick enclosure.
-Deliverables: Complete KiCad project folder (v8.0+ preferred) containing schematic (.kicad_sch), board (.kicad_pcb), library symbols, footprints, and 3D models. Output must be 100% compatible with direct JLCPCB fabrication and SMT assembly (BOM and CPL centroid files must be exportable via standard KiCad JLCPCB plugins).
-Physical Layout: Vertical side-by-side split. Upper half hosts RF modules (E22 LoRa, NEO-M9N GNSS), OLED display header, and ICM-20948 IMU. Lower half hosts USB-C port, SS-22F32 slide power switch, battery protection (DW01A+FS8205A), charging circuitry (BQ24074), and 3.3V buck-boost (TPS63802). Battery is a 1S2P 21700 (10Ah) battery pack mounted in a bracket underneath the PCB, connecting via JST-PH 2-pin or direct wire pads on the bottom layer.
-Aesthetic constraints: Curvy, rounded, organic trace routing ("80s vintage RAM card style") for all digital buses (I2C, UART, button inputs) and power/GND rails. No standard 45-degree or 90-degree trace angles allowed on low-speed lines. Add vintage teardrops to all pad-to-trace and via-to-trace connections to give it an old-school analog/digital hybrid look.
-Silkscreen: Meshtastic logo (vector graphics) and "TrekLink" project name printed on the top silkscreen layer. Include a blank serial number frame on the silkscreen: "v2.0 - [______]".
-Electrical Specs & Pin Mappings:
-- LoRa SPI: SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42.
-- I2C (OLED & IMU): SDA=5, SCL=6.
-- GNSS UART: RX=16 (ESP RX), TX=17 (ESP TX), EN=15 (power enable).
-- Buttons: MENU (BOOT)=0, SOS=4, UP=7, DOWN=8.
-- Notifications: Buzzer=11, Vibrator=12 (NPN driver).
-- Battery ADC: GPIO1 (ADC1_CH0) via 100k/100k divider.
-- Status LED: GPIO10.
+## 1. Functional Requirements
 
-4. What type of circuit or pcb design you want ?
-4-layer PCB (Layer 1: Signal/RF, Layer 2: Solid GND, Layer 3: PWR/Aux, Layer 4: Signal). Must use 100% in-stock LCSC parts for JLCPCB PCBA.
-Key Components:
-- U1: ESP32-S3-WROOM-1-N8R8 (C2913201)
-- U2: E22-400M22S SX1262 LoRa (C411291)
-- U3: u-blox NEO-M9N GNSS (C5119087)
-- U4: ICM-20948 IMU (C726001)
-- U5: TPS63802DLAT Buck-Boost 3.3V (C1849531)
-- U6: BQ24074RGTR Charger (C54313)
-- U7: DW01A Protection (C351410) + Q1: FS8205A Dual N-MOSFET (C32254)
-- J1: USB4105-GF-A USB-C (C2688138)
-- L1: cjiang FTC252012SR47MBCA 2520 0.47uH (C5832368)
-Layout Rules & Checklist (Designers must verify):
-1. RF Routing: 50-ohm microstrip for 433MHz LoRa path (E22 antenna pad to U.FL J2) and GPS RF path (NEO-M9N RF_IN to U.FL J3). Route straight on Layer 1. Do not use curved traces for RF. Provide solid, unbroken Layer 2 GND plane directly under RF lines. Surround RF traces with ground shield stitching vias.
-2. GPS Antenna: NEO-M9N does NOT have an internal antenna. Route RF_IN to dedicated U.FL (J3) near board edge. Provide CR1220 tabbed backup battery footprint near GPS module, protected by BAT54S dual Schottky diode to prevent back-charging.
-3. Power Path: Connect TPS63802 input directly to BQ24074 OUT pin (not BAT pin) for DPPM. TPS63802 feedback resistors (510k/91k) and bulk caps must be placed extremely close to IC pins. Place L1 (0.47uH 2520) close to SW pin with a wide, short track to minimize EMI. BQ24074 thermal pad must connect to GND plane via at least 4 thermal vias.
-4. USB-C CC Lines: CC1 and CC2 must each have an independent 5.1k-ohm pull-down resistor to GND. Do NOT tie them together. ESD protection (USBLC6-2SC6) and SMAJ5.0A TVS diode must be placed immediately at the USB-C connector entrance before VBUS/D+/D- connect to other parts. USB D+/D- must route as a 90-ohm differential pair to ESP32-S3.
-5. Track Widths: 3.3V, VBAT, and VBUS rails must be at least 24mil wide. Low-speed digital traces 8-10mil.
-6. Decoupling: Place 10uF and 100nF decoupling capacitors directly at the VCC pins of U1, U2, U3, and U4. GND pads of decoupling caps must connect directly to Layer 2 GND plane via vias.
-7. Test Pads: 1.5mm test pads for TP_3V3, VBAT, VUSB, GND, SDA, SCL, GPS_TX, LORA_CS, CHG.
+### 1.1 Core Functions
+The PCB mainboard acts as the central hub for the TrekLink v2.0 handheld off-grid communicator. It must perform the following core functions:
+- **Data Processing:** Run Meshtastic firmware on the ESP32-S3 microcontroller to handle mesh routing, device settings, and user interaction.
+- **LoRa Communication:** Transmit and receive packets in the 433 MHz band via the SPI-controlled E22-400M22S module.
+- **GNSS Position Tracking:** Capture location coordinates (GPS, GLONASS, BeiDou, Galileo) concurrently via the NEO-M9N module.
+- **Motion & Compass Sensing:** Capture 9-axis movement and magnetic heading (accelerometer, gyroscope, magnetometer) via the ICM-20948 IMU.
+- **Power Management:** Provide seamless system power transitions between USB input and battery via the BQ24074 charger, regulate a stable 3.3V system rail via the TPS63802 buck-boost converter, and protect the battery cells via the DW01A + FS8205A protector circuit.
+- **Soft-Latch Power Control:** Provide a latching power switch using a momentary button and the TPS63802 Enable (EN) pin.
+- **Alerts & Haptics:** Drive audio alerts via a passive buzzer (PWM) and haptic feedback via an ERM vibration motor.
 
+### 1.2 Input/Output Interfaces
+To minimize physical stress on the board inside the enclosure, all primary user-facing interfaces and ports are mounted off-board and wired back to the PCB:
 
-The information I provided is accurate and complete. Any changes will require the seller's approval, and may be subject to additional costs.
+| Interface | Type | Qty | Location / Pinout / Details |
+|-----------|------|-----|----------------------------|
+| **USB-C Interface** | 4-Pin Plated Breakout Pads | 1 | Solder pads labeled **VBUS, D+, D−, GND**. Sockets are wired to an external panel-mount USB-C port at the bottom of the enclosure. |
+| **Display Interface** | 4-Pin Plated Through-Holes | 1 | Solder pads at top-center labeled **VCC, GND, SDA, SCL**. The SSD1306 OLED module is laid flat and soldered directly to these pads (no headers). |
+| **User Input Breakouts** | 2-Pin Plated Breakout Pads | 5 | Breakout terminals labeled **SELECT, SOS, UP, DOWN, POWER** for wiring external IP-rated tactical buttons. |
+| **Bench-Test Buttons** | SMD Tactile Switches | 5 | Small SMD tactile buttons (e.g. 3×4mm, `C128477`) placed on-board in parallel with the breakouts for bench testing. |
+| **LoRa RF Out** | IPEX/U.FL Receptacle SMT | 1 | RF output routed via a 50Ω microstrip to the antenna pigtail. |
+| **GPS RF Out** | IPEX/U.FL Receptacle SMT | 1 | RF output routed via a 50Ω microstrip to the internal patch antenna. |
+| **Buzzer Output** | 2-Pin Plated Through-Holes | 1 | Plated through-holes for direct-soldering a passive buzzer. |
+| **Vibration Motor** | 2-Pin Solder Pads | 1 | Solder pads for direct-wiring a 3V coin vibration motor. |
+| **Battery Terminal** | 2-Pin Plated Solder Pads | 1 | Plated solder pads labeled **BAT+, BAT−** for connecting the 1S2P 21700 battery pack. |
+| **GPS Backup Battery** | Solder Pads | 1 | Solder pads for tabbed CR1220 backup coin cell. |
+
+---
+
+## 2. Performance Requirements
+
+### 2.1 MCU Clock & Peripherals
+- **Microcontroller:** ESP32-S3-WROOM-1-N8R8 module.
+- **Clock Frequency:** Dual-core Xtensa LX7 running at 240 MHz (internal PLL).
+- **USB Interface:** Native USB 2.0 Full-Speed (12 Mbps) interface routed directly from ESP32-S3 GPIO 19 (D−) and GPIO 20 (D+) to the USB-C breakout pads. No external USB-to-UART bridge IC is used.
+
+### 2.2 Signal Integrity & Impedance Control
+- **RF Paths (LoRa & GPS):**
+  - All RF traces (E22 RF pad to LoRa U.FL, and NEO-M9N RF_IN to GPS U.FL) must be routed as **50Ω coplanar waveguide or microstrip** transmission lines.
+  - Layer 2 must be a solid, unbroken ground plane directly beneath these RF traces.
+  - Guard shield stitching vias must be placed along the RF paths to prevent noise coupling.
+  - Curvy/rounded trace styling is **strictly prohibited** on RF traces.
+- **USB Data Bus:**
+  - Route USB D+/D− traces as a **90Ω differential pair**.
+  - Match the length of D+ and D− traces to within 0.15 mm. Keep traces as short as possible.
+- **High-Speed SPI Bus (LoRa):**
+  - Route SPI lines (SCK, MOSI, MISO, CS) to match length and minimize crosstalk. Max trace length ≤ 30 mm.
+- **I2C Bus (OLED & IMU):**
+  - Connect 4.7kΩ pull-up resistors to 3.3V on SDA (GPIO 5) and SCL (GPIO 6). Max bus length ~100 mm.
+- **Low-Speed Routing (Vintage Curvy Traces):**
+  - The designer may optionally use **curvy/rounded trace routing** ("vintage organic styling") for low-speed lines (I2C, UART, button lines, status LED) and power traces.
+  - Include teardrops on all low-speed pad-to-trace and via-to-trace connections to match the vintage look.
+
+---
+
+## 3. Dimensions and Physical Specifications
+
+### 3.1 PCB Constraints
+- **Layer Stack-up:** 4-Layer (Layer 1: Signal/RF, Layer 2: Solid GND, Layer 3: Solid Power, Layer 4: Signal).
+- **Board Dimensions:** Max width **54.2 mm**, max height **73.2 mm**. (0.4 mm tolerance gap inside the enclosure).
+- **Thickness:** 1.6 mm.
+- **Min Trace Width / Space:** 0.127 mm / 0.127 mm (5/5 mil).
+- **Min Via Drill / Diameter:** 0.3 mm / 0.6 mm.
+
+### 3.2 Mounting Configuration
+- **Mounting Method:** Secured via 4× M2.5 screws (2.8 mm drill holes) to the integrated standoffs of the prebuilt enclosure.
+- **Horizontal Spacing:** 41.8 mm hole-to-hole.
+- **Vertical Spacing:** 59.1 mm hole-to-hole.
+- **Edge Offsets:**
+  - Left edge to middle mounting holes: **5.6 mm** (shifted to clear battery compartment).
+  - Right edge to right mounting holes: **6.8 mm**.
+  - Top/Bottom edges to mounting holes: **7.05 mm**.
+
+### 3.3 Physical Layout Topology
+The communicator utilizes a vertical "side-by-side" layout inside the 125 × 80 × 32.5 mm enclosure:
+- **PCB Zone (Right Side):** The 54.2 × 73.2 mm PCB is positioned on the right half.
+- **Battery Zone (Left Side):** A 43.0 mm wide compartment is reserved on the left half to store the 1S2P 21700 battery cells (approx. 21.5 mm diameter each).
+- **Component Placement:**
+  - Locate the SSD1306 OLED solder interface at the top-center face of the board.
+  - Place the ESP32-S3, E22 LoRa, and NEO-M9N modules on the top/mid sections.
+  - Keep the power management ICs, breakouts, and battery terminal pads grouped at the bottom section of the PCB.
+
+---
+
+## 4. Power Requirements
+
+### 4.1 Input Voltages
+- **USB Input:** 5V DC (4.75V–5.25V) via external USB-C breakout pads.
+- **Battery Input:** 1S2P Li-Ion (3.0V–4.2V nominal, 10Ah).
+
+### 4.2 Power Distribution & Regulation
+- **Charger & Power Path (BQ24074):**
+  - Battery charge current configured to **1.0A** (via 887Ω ISET resistor).
+  - USB input current limit configured to **500mA** (via 1.6kΩ ISET2 resistor).
+  - Dynamic Power Path Management (DPPM) must be active to power the system rail even with a depleted or missing battery.
+- **System Regulator (TPS63802):**
+  - The TPS63802 buck-boost regulator must output a stable **3.3V** rail to power all on-board modules.
+  - Feedback resistor values: R1 (high) = 510kΩ, R2 (low) = 91kΩ (1% accuracy).
+- **Over-Current Protection:** A **1.5A resettable PTC fuse** (1210 package) must be placed in series between the VBUS breakout pad and the BQ24074 IN pin.
+
+### 4.3 Power Consumption Limits
+The PCB layout and component decoupling must support the following power limits:
+- **Active Transmit State (LoRa Burst):** Peak current draw ≤ 500mA @ 3.3V.
+- **Active Receive / Idle State:** Average current draw ≤ 80mA @ 3.3V.
+- **Standby / Sleep State:** Current draw ≤ 2.0mA (GPS in standby, LoRa in sleep, MCU in light sleep).
+- **Shutdown State (TPS63802 Disabled):** Total quiescent current draw from battery **≤ 15µA** (TPS63802 EN pulled LOW, BQ24074 in standby, battery protection standby).
+
+---
+
+## 5. Compatibility Requirements
+
+### 5.1 Hardware Compatibility
+- **I2C Addresses:**
+  - SSD1306 OLED: 0x3C (7-bit address).
+  - ICM-20948 IMU: 0x68 (7-bit address).
+- **Antenna System:**
+  - LoRa RF U.FL routes to an external 433 MHz SMA whip antenna via an IPEX-to-SMA pigtail.
+  - GPS RF U.FL routes to a passive 25 × 25 mm ceramic patch antenna mounted internally inside the battery compartment.
+  - A 0Ω resistor footprint must be placed between VCC_RF and the RF_IN microstrip path as a placeholder for a future active antenna bias-T circuit.
+
+### 5.2 Software & Firmware Compatibility
+- The board runs the open-source **Meshtastic** firmware.
+- The GPIO pinout must map exactly to the custom `variant.h` configuration:
+  - **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42.
+  - **I2C:** SDA=5, SCL=6.
+  - **UART (GPS):** RX=16, TX=17, EN=15.
+  - **USB:** D−=19, D+=20.
+  - **Notifications:** Buzzer=11 (PWM), Vibrator=12.
+  - **Status LED:** GPIO 2.
+  - **Battery ADC:** GPIO 1 (via 100kΩ/100kΩ voltage divider).
+  - **Buttons:** UP=7, SELECT=0, DOWN=8, SOS=4, POWER=9.
+
+---
+
+## 6. Reliability and Stability Requirements
+
+### 6.1 Service Life & Duty Cycle
+- **Expected Service Life:** Minimum **5 years** of reliable operation under typical outdoor handheld use.
+- **Duty Cycle:** Designed for continuous 24/7 operation in standby/receive modes, with a 5% transmit duty cycle.
+
+### 6.2 Environmental Specifications
+- **Operating Temperature:** -20°C to +60°C (limited by the safe discharge temperature limits of the Li-Ion chemistry).
+- **Storage Temperature:** -40°C to +85°C (without battery installed).
+- **Humidity:** 5% to 95% RH, non-condensing.
+
+### 6.3 Transient and ESD Protection
+To protect internal circuits from ESD discharges and power line surges, the following protective devices must be included in the schematic and placed close to their respective entry points:
+- **USB VBUS Surge:** Place a unidirectional TVS diode (SMAJ5.0A or equivalent) at the VBUS breakout pad.
+- **USB Data ESD:** Place a low-capacitance ESD protection array (USBLC6-2SC6) on the D+/D− lines close to the breakout pads.
+- **GPS RF ESD:** Place an ultra-low capacitance ESD protection diode (PESD0402-140 or equivalent, capacitance ≤ 0.25 pF) on the RF_IN path close to the GPS U.FL receptacle to prevent signal attenuation.
+- **Battery Protection:** The DW01A protection IC and FS8205A dual-MOSFET pair must safeguard the cell terminals from over-charge, over-discharge, and short-circuit faults.
