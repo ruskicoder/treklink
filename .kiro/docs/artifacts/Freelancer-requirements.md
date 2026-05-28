@@ -2,7 +2,7 @@
 
 > **Revision:** 2.1  
 > **Date:** 2026-05-28  
-> **Project:** Custom 4-Layer PCB design for TrekLink v2.0 off-grid communicator.  
+> **Project:** Custom 2-Layer PCB design for TrekLink v2.0 off-grid communicator.  
 > **Deliverable Format:** Complete KiCad Project (v8.0+ preferred). Must be directly compatible with JLCPCB PCBA service.
 > **Reference Documents:**  
 > - `v2.0-component-list.md` — Complete BOM with LCSC part numbers  
