@@ -32,8 +32,8 @@ To minimize physical stress on the board inside the enclosure, all primary user-
 | **Display Interface** | 4-Pin Plated Through-Holes | 1 | Solder pads at top-center labeled **VCC, GND, SDA, SCL**. The SSD1306 OLED module is laid flat and soldered directly to these pads (no headers). |
 | **User Input Breakouts** | 2-Pin Plated Breakout Pads | 5 | Breakout terminals labeled **SELECT, SOS, UP, DOWN, POWER** for wiring external IP-rated tactical buttons. |
 | **Bench-Test Buttons** | SMD Tactile Switches | 5 | Small SMD tactile buttons (e.g. 3×4mm, `C128477`) placed on-board in parallel with the breakouts for bench testing. |
-| **LoRa RF Out** | IPEX/U.FL Receptacle SMT | 1 | RF output routed via a 50Ω microstrip to the antenna pigtail. |
-| **GPS RF Out** | IPEX/U.FL Receptacle SMT | 1 | RF output routed via a 50Ω microstrip to the internal patch antenna. |
+| **LoRa RF Out** | IPEX Connector on Module | 1 | LoRa module features a built-in IPEX receptacle for direct connection to SMA pigtail. |
+| **GPS RF Out** | IPEX/U.FL Receptacle SMT | 1 | RF output on PCB routed via a 50Ω microstrip from GPS module to U.FL receptacle. |
 | **Buzzer Output** | 2-Pin Plated Through-Holes | 1 | Plated through-holes for direct-soldering a passive buzzer. |
 | **Vibration Motor** | 2-Pin Solder Pads | 1 | Solder pads for direct-wiring a 3V coin vibration motor. |
 | **Battery Terminal** | 2-Pin Plated Solder Pads | 1 | Plated solder pads labeled **BAT+, BAT−** for connecting the 1S2P 21700 battery pack. |
@@ -49,11 +49,12 @@ To minimize physical stress on the board inside the enclosure, all primary user-
 - **USB Interface:** Native USB 2.0 Full-Speed (12 Mbps) interface routed directly from ESP32-S3 GPIO 19 (D−) and GPIO 20 (D+) to the USB-C breakout pads. No external USB-to-UART bridge IC is used.
 
 ### 2.2 Signal Integrity & Impedance Control
-- **RF Paths (LoRa & GPS):**
-  - All RF traces (E22 RF pad to LoRa U.FL, and NEO-M9N RF_IN to GPS U.FL) must be routed as **50Ω coplanar waveguide or microstrip** transmission lines.
-  - Layer 2 must be a solid, unbroken ground plane directly beneath these RF traces.
-  - Guard shield stitching vias must be placed along the RF paths to prevent noise coupling.
+- **RF Path (GPS):**
+  - The RF trace from NEO-M9N RF_IN pad to the GPS U.FL receptacle must be routed as a **50Ω coplanar waveguide or microstrip** transmission line.
+  - Layer 2 must be a solid, unbroken ground plane directly beneath this RF trace.
+  - Guard shield stitching vias must be placed along the RF path to prevent noise coupling.
   - Curvy/rounded trace styling is **strictly prohibited** on RF traces.
+  - *Note:* LoRa RF routing is entirely contained within the E22-400M22S module; no RF traces for LoRa are needed on the main PCB.
 - **USB Data Bus:**
   - Route USB D+/D− traces as a **90Ω differential pair**.
   - Match the length of D+ and D− traces to within 0.15 mm. Keep traces as short as possible.
@@ -124,11 +125,12 @@ The PCB layout and component decoupling must support the following power limits:
 ## 5. Compatibility Requirements
 
 ### 5.1 Hardware Compatibility
-- **I2C Addresses:**
-  - SSD1306 OLED: 0x3C (7-bit address).
-  - ICM-20948 IMU: 0x68 (7-bit address).
+- **I2C Addresses & Logic Levels:**
+  - SSD1306 OLED: 0x3C (7-bit address). Operates at 3.3V logic.
+  - ICM-20948 IMU: 0x68 (7-bit address). Operates at 1.8V VDDIO logic.
+  - A 1.8V sub-rail (regulated via AMS1117-1.8 from 3.3V) and bidirectional logic level shifters (via 2N7002 MOSFETs) must be implemented on the I2C SDA, SCL, and INT lines to translate between the 1.8V sensor side and the 3.3V MCU side.
 - **Antenna System:**
-  - LoRa RF U.FL routes to an external 433 MHz SMA whip antenna via an IPEX-to-SMA pigtail.
+  - LoRa RF connects directly to the built-in IPEX receptacle on the E22 module, routing to an external 433 MHz SMA whip antenna via an IPEX-to-SMA pigtail.
   - GPS RF U.FL routes to a passive 25 × 25 mm ceramic patch antenna mounted internally inside the battery compartment.
   - A 0Ω resistor footprint must be placed between VCC_RF and the RF_IN microstrip path as a placeholder for a future active antenna bias-T circuit.
 

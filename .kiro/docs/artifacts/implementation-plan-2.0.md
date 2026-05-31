@@ -17,18 +17,19 @@
 │                                                                        │
 │  ESP32-S3-WROOM-1 (N8R8)       ←SPI→     E22-400M22S (SX1268)          │
 │          │                                   │                         │
-│          ├─UART1→ NEO-M9N GPS                │← IPEX → SMA (433MHz)    │
-│          ├─I2C→ ICM-20948 IMU                │                         │
-│          ├─I2C→ SSD1306 OLED (solder pads)   │                         │
-│          ├─GPIO→ 5× Buttons (Test + Breakout)│                         │
-│          ├─PWM→ Passive Buzzer               │                         │
-│          ├─GPIO→ Vibrator Driver (MMBT3904)  │                         │
-│          ├─GPIO→ Status LED                  │                         │
-│          └─ADC→ Battery Divider (100k/100k)  │                         │
+│          ├─UART1→ NEO-M9N GPS                └─ Built-in IPEX ── SMA   │
+│          ├─I2C→ Level Shifter → ICM-20948 IMU                          │
+│          ├─I2C→ SSD1306 OLED (solder pads)                             │
+│          ├─GPIO→ 5× Buttons (Test + Breakout)                          │
+│          ├─PWM→ Passive Buzzer                                         │
+│          ├─GPIO→ Vibrator Driver (MMBT3904)                            │
+│          ├─GPIO→ Status LED                                            │
+│          └─ADC→ Battery Divider (100k/100k)                            │
 │                                                                        │
 │  BQ24074 (Charger) ── [PTC Fuse] ── [4-Pin USB Breakout]               │
 │      │                                                                 │
-│      ├─→ TPS63802 (3.3V Buck-Boost) ── [EN Pin Soft-Latch via GPIO 9]  │
+│      ├─→ TPS63802 (3.3V Buck-Boost) ──┬── [EN Pin Soft-Latch via GPIO 9]│
+│      │                                └──→ AMS1117-1.8 ──→ 1.8V (IMU)  │
 │      │                                                                 │
 │      └─→ DW01A + FS8205A (Protection) ── [1S2P 21700 Battery, 10Ah]    │
 └────────────────────────────────────────────────────────────────────────┘
@@ -108,15 +109,17 @@
 | Spec | Value |
 |------|-------|
 | **Axes** | 9 (Accel + Gyro + Magnetometer AK09916) |
+| **VDDIO Logic Level** | 1.71V–1.95V MAX (requires level shifting to 3.3V) |
+| **Level Shifters** | 3× 2N7002 N-MOSFETs (SDA, SCL, INT) + AMS1117-1.8 LDO |
 | **I2C Address** | 0x68 (no conflict with OLED 0x3C) |
 | **LCSC** | C726001 |
 
-**I2C mapping:**
+**I2C mapping (via level-shifters):**
 
-| Signal | ESP32-S3 GPIO |
-|--------|---------------|
-| SDA | GPIO 5 |
-| SCL | GPIO 6 |
+| Signal | ESP32-S3 GPIO | Logic Level |
+|--------|---------------|-------------|
+| SDA | GPIO 5 | 3.3V (translates to 1.8V at IMU) |
+| SCL | GPIO 6 | 3.3V (translates to 1.8V at IMU) |
 
 ---
 
