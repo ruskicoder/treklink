@@ -170,7 +170,7 @@ The design fits a prebuilt enclosure from thegioiic (125 × 80 × 32.5 mm).
 - **Notification:** Buzzer=11 (PWM), Vibrator=12 (MMBT3904 NPN driver).
 - **Status LED:** GPIO 2 (Green LED).
 - **Battery ADC:** GPIO 1 (ADC1_CH0) via 100kΩ/100kΩ voltage divider.
-- **Buttons:** UP=7, SELECT=0, DOWN=8, SOS=4, POWER=9 (bidirectional soft-latch).
+- **Buttons:** UP=7, SELECT=0, DOWN=8, SOS=4, POWER_LATCH=9 (latch output, active HIGH), POWER_SENSE=13 (sense input, active LOW).
 
 ---
 
@@ -220,6 +220,8 @@ Create `variants/esp32s3/treklink_v2_0/variant.h` with the following configurati
 #define BUTTON_PIN_SOS 4  // SOS
 #define BUTTON_PIN_UP 7   // UP
 #define BUTTON_PIN_DOWN 8 // DOWN
+#define BUTTON_PIN_POWER 13 // POWER Sense (active LOW)
+#define PIN_POWER_LATCH 9   // POWER Latch (active HIGH)
 
 // Notifications
 #define PIN_BUZZER 11
