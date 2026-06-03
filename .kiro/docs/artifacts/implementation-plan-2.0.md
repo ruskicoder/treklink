@@ -22,7 +22,7 @@
 │          ├─I2C→ SSD1306 OLED (solder pads)                             │
 │          ├─GPIO→ 5× Buttons (Test + Breakout)                          │
 │          ├─PWM→ Passive Buzzer                                         │
-│          ├─GPIO→ Vibrator Driver (MMBT3904)                            │
+│          ├─GPIO→ Vibrator Driver (AO3400A MOSFET)                      │
 │          ├─GPIO→ Status LED                                            │
 │          └─ADC→ Battery Divider (100k/100k)                            │
 │                                                                        │
@@ -167,7 +167,7 @@ The design fits a prebuilt enclosure from thegioiic (125 × 80 × 32.5 mm).
 - **I2C (OLED & IMU):** SDA=5, SCL=6, IMU_INT=3 (active-LOW, 1.8V level-shifted).
 - **UART (GNSS GPS):** RX=16, TX=17, EN=15.
 - **USB Data:** D−=19, D+=20.
-- **Notification:** Buzzer=11 (PWM), Vibrator=12 (MMBT3904 NPN driver).
+- **Notification:** Buzzer=11 (PWM, via Q9 MOSFET), Vibrator=12 (via Q10 MOSFET).
 - **Status LED:** GPIO 2 (Green LED).
 - **Battery ADC:** GPIO 1 (ADC1_CH0) via 100kΩ/100kΩ voltage divider.
 - **Buttons:** UP=7, SELECT=0, DOWN=8, SOS=4, POWER_LATCH=9 (latch output, active HIGH), POWER_SENSE=13 (sense input, active LOW).
