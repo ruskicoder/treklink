@@ -218,7 +218,7 @@ Create `variants/esp32s3/treklink_v2_0/variant.h` with the following configurati
 #define USE_SSD1306
 
 // Buttons
-#define BUTTON_PIN 0      // SELECT (BOOT button w/ pull-down)
+#define BUTTON_PIN 0      // SELECT (BOOT button w/ pull-up, active-LOW)
 #define BUTTON_PIN_SOS 4  // SOS
 #define BUTTON_PIN_UP 7   // UP
 #define BUTTON_PIN_DOWN 8 // DOWN

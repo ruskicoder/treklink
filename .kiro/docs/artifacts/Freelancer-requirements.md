@@ -145,7 +145,7 @@ The PCB layout and component decoupling must support the following power limits:
   - **Notifications:** Buzzer=11 (PWM), Vibrator=12.
   - **Status LED:** GPIO 2.
   - **Battery ADC:** GPIO 1 (via 100kΩ/100kΩ voltage divider).
-  - **Buttons:** UP=7, SELECT=0, DOWN=8, SOS=4, POWER Latch=9 (latch output, active HIGH), POWER Sense=13 (sense input, active LOW).
+  - **Buttons:** UP=7, SELECT=0 (active-LOW, 10kΩ pull-up), DOWN=8, SOS=4, POWER Latch=9 (latch output, active HIGH), POWER Sense=13 (sense input, active LOW).
 
 ---
 
