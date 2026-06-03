@@ -21,7 +21,7 @@ Design Requirements:
 - Key Features:
   * Soft-latch power control circuit using a dual-MOSFET latch (2N7002 + AO3401A) controlled by ESP32-S3 GPIO 9 (latch output) and sensed via GPIO 13.
   * LoRa RF switch wiring: E22 TXEN (Pin 7) connected to E22 DIO2 (Pin 8) on-board; E22 RXEN (Pin 6) connected to ESP32-S3 GPIO 43 for software receive-enable control.
-  * 1.8V sub-rail (regulated via AMS1117-1.8) and bidirectional level shifters (via 2N7002 MOSFETs) for the ICM-20948 IMU (I2C SDA/SCL and INT lines).
+  * 1.8V sub-rail (regulated via AMS1117-1.8) and bidirectional level shifters (via 2N7002 MOSFETs) for the ICM-20948 IMU (I2C SDA/SCL and INT line routed to ESP32-S3 GPIO 3).
   * Off-board interfaces: 4-pin breakout pads for USB-C (connector is panel-mount, off-board), 4-pin direct solder pads for 0.96" SSD1306 OLED module, and 5× 2-pin breakouts for waterproof external buttons (with parallel SMD test buttons on-board).
   * 50Ω microstrip trace with solid ground plane reference for the GPS (1.57GHz) RF path leading to a U.FL connector. LoRa RF uses the built-in IPEX connector directly on the E22 module (no RF routing on the main PCB).
   * Transient/ESD protection on USB and GPS RF inputs, and a 1.5A PTC fuse on VBUS.

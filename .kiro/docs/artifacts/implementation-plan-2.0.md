@@ -164,7 +164,7 @@ The design fits a prebuilt enclosure from thegioiic (125 × 80 × 32.5 mm).
 ## 4. Pin Mappings (ESP32-S3-WROOM-1)
 
 - **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42, RXEN=43 (TXEN connected to DIO2).
-- **I2C (OLED & IMU):** SDA=5, SCL=6.
+- **I2C (OLED & IMU):** SDA=5, SCL=6, IMU_INT=3 (active-LOW, 1.8V level-shifted).
 - **UART (GNSS GPS):** RX=16, TX=17, EN=15.
 - **USB Data:** D−=19, D+=20.
 - **Notification:** Buzzer=11 (PWM), Vibrator=12 (MMBT3904 NPN driver).
@@ -203,6 +203,7 @@ Create `variants/esp32s3/treklink_v2_0/variant.h` with the following configurati
 // I2C (OLED 0x3C + ICM-20948 0x68)
 #define I2C_SDA 5
 #define I2C_SCL 6
+#define IMU_INT_PIN 3
 
 // GPS (UART)
 #define HAS_GPS 1
