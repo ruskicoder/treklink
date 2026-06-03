@@ -129,15 +129,16 @@ The PCB layout and component decoupling must support the following power limits:
   - SSD1306 OLED: 0x3C (7-bit address). Operates at 3.3V logic.
   - ICM-20948 IMU: 0x68 (7-bit address). Operates at 1.8V VDDIO logic.
   - A 1.8V sub-rail (regulated via AMS1117-1.8 from 3.3V) and bidirectional logic level shifters (via 2N7002 MOSFETs) must be implemented on the I2C SDA, SCL, and INT lines to translate between the 1.8V sensor side and the 3.3V MCU side.
-- **Antenna System:**
+- **Antenna & RF Switch System:**
   - LoRa RF connects directly to the built-in IPEX receptacle on the E22 module, routing to an external 433 MHz SMA whip antenna via an IPEX-to-SMA pigtail.
+  - The E22-400M22S RF switch control lines must be wired as follows: E22 TXEN (Pin 7) connects directly to E22 DIO2 (Pin 8) on the PCB for automatic TX path switching. E22 RXEN (Pin 6) connects to ESP32-S3 GPIO 43 for software-controlled RX path switching.
   - GPS RF U.FL routes to a passive 25 × 25 mm ceramic patch antenna mounted internally inside the battery compartment.
   - A 0Ω resistor footprint must be placed between VCC_RF and the RF_IN microstrip path as a placeholder for a future active antenna bias-T circuit.
 
 ### 5.2 Software & Firmware Compatibility
 - The board runs the open-source **Meshtastic** firmware.
 - The GPIO pinout must map exactly to the custom `variant.h` configuration:
-  - **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42.
+  - **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42, RXEN=43 (TXEN connected to DIO2).
   - **I2C:** SDA=5, SCL=6.
   - **UART (GPS):** RX=16, TX=17, EN=15.
   - **USB:** D−=19, D+=20.

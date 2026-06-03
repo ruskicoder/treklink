@@ -163,7 +163,7 @@ The design fits a prebuilt enclosure from thegioiic (125 × 80 × 32.5 mm).
 
 ## 4. Pin Mappings (ESP32-S3-WROOM-1)
 
-- **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42.
+- **SPI (LoRa):** SCK=21, MOSI=38, MISO=39, CS=14, RESET=40, BUSY=41, DIO1=42, RXEN=43 (TXEN connected to DIO2).
 - **I2C (OLED & IMU):** SDA=5, SCL=6.
 - **UART (GNSS GPS):** RX=16, TX=17, EN=15.
 - **USB Data:** D−=19, D+=20.
@@ -194,6 +194,7 @@ Create `variants/esp32s3/treklink_v2_0/variant.h` with the following configurati
 #define SX126X_BUSY 41
 #define SX126X_DIO1 42
 #define SX126X_DIO2_AS_RF_SWITCH
+#define SX126X_RXEN 43
 #define SX126X_DIO3_TCXO_VOLTAGE 1.8
 #define SX126X_MAX_POWER 22
 #define LORA_CS SX126X_CS
