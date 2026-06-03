@@ -6,21 +6,27 @@ This document evaluates the freelancer's **complete-schematic.pdf** (7 pages, Ki
 
 ## Sheet Overview
 
-````carousel
-![Page 1 — Hierarchical Block Diagram](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-1.png)
-<!-- slide -->
-![Page 2 — MCU (ESP32-S3-WROOM-1)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-2.png)
-<!-- slide -->
-![Page 3 — LoRa (E22-400M22S)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-3.png)
-<!-- slide -->
-![Page 4 — GPS (NEO-M9N-00B)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-4.png)
-<!-- slide -->
-![Page 5 — IMU (ICM-20948 + AMS1117-1.8)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-5.png)
-<!-- slide -->
-![Page 6 — Utils (Buttons, OLED, Buzzer, Motor, LED)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-6.png)
-<!-- slide -->
-![Page 7 — Power (BQ24074, TPS63802, DW01A, Soft-Latch)](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/complete_sch_page-7.png)
-````
+### Page 1 — Hierarchical Block Diagram
+![Hierarchical Block Diagram](/.kiro/docs/artifacts/complete_sch_page-1.png)
+
+### Page 2 — MCU (ESP32-S3-WROOM-1)
+![MCU (ESP32-S3-WROOM-1)](/.kiro/docs/artifacts/complete_sch_page-2.png)
+
+### Page 3 — LoRa (E22-400M22S)
+![LoRa (E22-400M22S)](/.kiro/docs/artifacts/complete_sch_page-3.png)
+
+### Page 4 — GPS (NEO-M9N-00B)
+![GPS (NEO-M9N-00B)](/.kiro/docs/artifacts/complete_sch_page-4.png)
+
+### Page 5 — IMU (ICM-20948 + AMS1117-1.8)
+![IMU (ICM-20948 + AMS1117-1.8)](/.kiro/docs/artifacts/complete_sch_page-5.png)
+
+### Page 6 — Utils (Buttons, OLED, Buzzer, Motor, LED)
+![Utils (Buttons, OLED, Buzzer, Motor, LED)](/.kiro/docs/artifacts/complete_sch_page-6.png)
+
+### Page 7 — Power (BQ24074, TPS63802, DW01A, Soft-Latch)
+![Power (BQ24074, TPS63802, DW01A, Soft-Latch)](/.kiro/docs/artifacts/complete_sch_page-7.png)
+
 
 ---
 
@@ -111,7 +117,7 @@ This document evaluates the freelancer's **complete-schematic.pdf** (7 pages, Ki
 
 This is the page the freelancer asked us to inspect carefully.
 
-![Power section close-up](/home/anatolli/.gemini/antigravity/brain/f5623dab-fe83-402c-b5f3-a27377ed9bbe/artifacts/power-schematics.png)
+![Power section close-up](/.kiro/docs/artifacts/power-schematics.png)
 
 #### 7.1 USB Input & Protection ✅
 - PTC fuse (F1, 1210L150/16WR, 1.5A hold). ✅
