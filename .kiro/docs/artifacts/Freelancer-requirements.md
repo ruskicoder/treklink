@@ -72,24 +72,24 @@ To minimize physical stress on the board inside the enclosure, all primary user-
 
 ### 3.1 PCB Constraints
 - **Layer Stack-up:** 4-Layer (Layer 1: Signal/RF, Layer 2: Solid GND, Layer 3: Solid Power, Layer 4: Signal).
-- **Board Dimensions:** Max width **54.2 mm**, max height **73.2 mm**. (0.4 mm tolerance gap inside the enclosure).
+- **Board Dimensions:** Max width **51.8 mm**, max height **69.1 mm**. (Uniform 5.0 mm offset from mounting hole centers with 5.0 mm concentric corner radiuses).
 - **Thickness:** 1.6 mm.
 - **Min Trace Width / Space:** 0.127 mm / 0.127 mm (5/5 mil).
 - **Min Via Drill / Diameter:** 0.3 mm / 0.6 mm.
 
 ### 3.2 Mounting Configuration
-- **Mounting Method:** Secured via 4× M2.5 screws (2.8 mm drill holes) to the integrated standoffs of the prebuilt enclosure.
+- **Mounting Method:** Secured via 4× M2.5 screws (3.0 mm drill holes) to the integrated standoffs of the prebuilt enclosure.
 - **Horizontal Spacing:** 41.8 mm hole-to-hole.
 - **Vertical Spacing:** 59.1 mm hole-to-hole.
 - **Edge Offsets:**
-  - Left edge to middle mounting holes: **5.6 mm** (shifted to clear battery compartment).
-  - Right edge to right mounting holes: **6.8 mm**.
-  - Top/Bottom edges to mounting holes: **7.05 mm**.
+  - Left edge to middle mounting holes: **5.0 mm** (uniform boundary).
+  - Right edge to right mounting holes: **5.0 mm** (uniform boundary).
+  - Top/Bottom edges to mounting holes: **5.0 mm** (uniform boundary).
 
 ### 3.3 Physical Layout Topology
 The communicator utilizes a vertical "side-by-side" layout inside the 125 × 80 × 32.5 mm enclosure:
-- **PCB Zone (Right Side):** The 54.2 × 73.2 mm PCB is positioned on the right half.
-- **Battery Zone (Left Side):** A 43.0 mm wide compartment is reserved on the left half to store the 1S2P 21700 battery cells (approx. 21.5 mm diameter each).
+- **PCB Zone (Right Side):** The 51.8 × 69.1 mm PCB is positioned on the right half.
+- **Battery Zone (Left Side):** A 44.0 mm wide compartment is reserved on the left half to store the 1S2P 21700 battery cells (approx. 21.5 mm diameter each).
 - **Component Placement:**
   - Locate the SSD1306 OLED solder interface at the top-center face of the board.
   - Place the ESP32-S3, E22 LoRa, and NEO-M9N modules on the top/mid sections.
