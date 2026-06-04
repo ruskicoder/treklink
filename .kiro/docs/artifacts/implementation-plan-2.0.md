@@ -13,7 +13,7 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        TrekLink v2.0 PCB (51.8×69.1mm)                 │
+│                        TrekLink v2.0 PCB (52.5×70.0mm)                 │
 │                                                                        │
 │  ESP32-S3-WROOM-1 (N8R8)       ←SPI→     E22-400M22S (SX1268)          │
 │          │                                   │                         │
@@ -153,9 +153,9 @@ The SSD1306 0.96" module is laid flat on the top-center face of the PCB. It conn
 ## 3. Physical Layout & Stacking
 
 ### Side-by-Side Enclosure Integration
-The design fits a prebuilt enclosure from thegioiic (125 × 80 × 32.5 mm).
-- **PCB Space:** 51.8 mm (W) × 69.1 mm (H).
-- **Battery Space:** 44.0 mm (W) × 74.0 mm (H).
+The design fits a prebuilt enclosure from thegioiic (124.6 × 79.6 × 33.7 mm).
+- **PCB Space:** 52.5 mm (W) × 70.0 mm (H).
+- **Battery Space:** 44.8 mm (W) × 73.8 mm (H).
 - The 1S2P 21700 battery pack sits to the left of the PCB.
 - This side-by-side vertical configuration yields a device profile thickness under 30mm.
 
