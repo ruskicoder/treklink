@@ -1,0 +1,3 @@
+V2.0: this custom PCB. Use prebuilt enclosure, with specified measurements. The version is absolute best quality PCB, but the price of manufacture will high. This is the current order of PCB design we work on
+v3.0: use Lilygo T-Beam module and custom 3d enclosure (open source) and we will just custom the firmware to display our name.
+v4.0: use Lilygo T-Beam Supreme module and custom 3d enclosure (open source) and we will just custom the firmware to display our name.
