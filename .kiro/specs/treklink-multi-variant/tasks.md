@@ -85,7 +85,7 @@ STAGE 5: Final Validation (this file)
 
 ## Stage 1: Cross-Cutting Foundation
 
-- [ ] MV-1. Extract shared SOS logic into a common helper
+- [x] MV-1. Extract shared SOS logic into a common helper
   - Current SOS trigger/cancel code is duplicated between `TrekLinkButtonModule` and `FallDetectionModule`
   - Extract into `src/modules/TrekLinkSOSHelper.h/.cpp`:
     - `triggerSOS()` — send position + text packet, activate alarms

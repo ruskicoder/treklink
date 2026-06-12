@@ -9,20 +9,11 @@
  */
 
 #include "TrekLinkButtonModule.h"
+#include "TrekLinkSOSHelper.h"
 #include "BuzzerManager.h"
 #include "FallDetectionModule.h"
-#include "MeshService.h"
-#include "NodeDB.h"
 #include "configuration.h"
 #include "main.h"
-
-#if HAS_SCREEN
-#include "graphics/Screen.h"
-#endif
-
-#if !MESHTASTIC_EXCLUDE_GPS
-#include "modules/PositionModule.h"
-#endif
 
 TrekLinkButtonModule *trekLinkButtonModule;
 
@@ -228,84 +219,22 @@ void TrekLinkButtonModule::onHoldThreshold()
 
 void TrekLinkButtonModule::broadcastPosition()
 {
-    LOG_INFO("Broadcasting position (ping)");
-
-    // Delegate to PositionModule for position broadcast
-    if (positionModule) {
-        positionModule->sendOurPosition();
-    }
+    TrekLinkSOSHelper::instance().broadcastPosition();
 }
 
 void TrekLinkButtonModule::triggerSOS()
 {
-    LOG_WARN("SOS TRIGGERED!");
-
-    // Create high-priority emergency packet
-    meshtastic_MeshPacket *packet = allocDataPacket();
-    packet->channel = 0; // Primary channel (broadcast)
-    packet->priority = meshtastic_MeshPacket_Priority_MAX; // MAX priority
-    packet->want_ack = false; // No ACK for broadcast emergency
-
-    // Set packet type to position with SOS flag
-    packet->decoded.portnum = meshtastic_PortNum_POSITION_APP;
-
-    // Use node's current position (already updated by GPS/PositionModule)
-    meshtastic_Position pos = meshtastic_Position_init_default;
-    meshtastic_NodeInfoLite *node = nodeDB->getNodeNum() ? nodeDB->getMeshNode(nodeDB->getNodeNum()) : nullptr;
-    if (node && nodeDB->hasValidPosition(node)) {
-        pos.latitude_i = node->position.latitude_i;
-        pos.longitude_i = node->position.longitude_i;
-        pos.altitude = node->position.altitude;
-        pos.time = node->position.time;
-    }
-
-    // Encode position into packet
-    packet->decoded.payload.size = pb_encode_to_bytes(
-        packet->decoded.payload.bytes,
-        sizeof(packet->decoded.payload.bytes),
-        &meshtastic_Position_msg,
-        &pos
-    );
-
-    // Send via router
-    if (service) {
-        service->sendToMesh(packet);
-    }
-
-    // Activate local alarms (buzzer continuous, vibrator will be synced)
-    activateSOSAlarms();
+    TrekLinkSOSHelper::instance().triggerSOS(OWNER_SOS);
 }
 
 void TrekLinkButtonModule::activateSOSAlarms()
 {
-    LOG_INFO("Activating SOS alarms");
-
-#ifdef PIN_BUZZER
-    BuzzerManager::instance().acquire(OWNER_SOS);
-    BuzzerManager::instance().write(128); // 50% duty cycle
-#endif
-
-#ifdef PIN_VIBRATOR
-    digitalWrite(PIN_VIBRATOR, HIGH);
-#endif
+    TrekLinkSOSHelper::instance().activateAlarms(OWNER_SOS);
 }
 
 void TrekLinkButtonModule::cancelSOS()
 {
-    LOG_INFO("SOS CANCELLED");
-
-#ifdef PIN_BUZZER
-    BuzzerManager::instance().write(0);
-    BuzzerManager::instance().release(OWNER_SOS);
-#endif
-
-#ifdef LED_PIN
-    digitalWrite(LED_PIN, LOW);
-#endif
-
-#ifdef PIN_VIBRATOR
-    digitalWrite(PIN_VIBRATOR, LOW);
-#endif
+    TrekLinkSOSHelper::instance().cancelSOS(OWNER_SOS);
 }
 
 // ============================================================
@@ -362,11 +291,7 @@ void TrekLinkButtonModule::vibratorPulse(bool on)
 
 void TrekLinkButtonModule::showBanner(const char *message, uint32_t durationMs)
 {
-#if HAS_SCREEN
-    if (screen) {
-        screen->showSimpleBanner(message, durationMs);
-    }
-#endif
+    TrekLinkSOSHelper::instance().showBanner(message, durationMs);
 }
 
 // ============================================================
@@ -380,20 +305,13 @@ int32_t TrekLinkButtonModule::runOnce()
     // Run confirmation feedback (non-blocking pulse sequence)
     updateConfirmation();
 
-    // SOS beacon — retransmit position periodically
+    // SOS beacon — retransmit position periodically via helper
     if (sosActive) {
-        uint32_t now = millis();
-        uint32_t elapsed = now - sosStartTime;
-        uint32_t interval = (elapsed < 60000) ? 5000 : 30000; // 5s first min, then 30s
-        if ((now - lastSOSTxTime) >= interval) {
-            LOG_INFO("SOS Beacon: Retransmitting position");
-            broadcastPosition();
-            lastSOSTxTime = now;
-        }
+        TrekLinkSOSHelper::instance().tickBeacon(sosStartTime, lastSOSTxTime);
 
 #ifdef LED_PIN
         // 2Hz LED strobe during SOS
-        digitalWrite(LED_PIN, (now / 250) % 2);
+        digitalWrite(LED_PIN, (millis() / 250) % 2);
 #endif
     }
 
