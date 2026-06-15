@@ -96,7 +96,13 @@
 
 #ifdef TREKLINK_VARIANT
 #include "modules/FallDetectionModule.h"
+#if defined(TREKLINK_V2)
+#include "modules/sensors/ICM20948FallSensor.h"
+#elif defined(TREKLINK_V4)
+#include "modules/sensors/QMI8658FallSensor.h"
+#elif !defined(TREKLINK_V3)
 #include "modules/sensors/MPU6050FallSensor.h"
+#endif
 #ifdef BUTTON_PIN_SOS
 #include "modules/TrekLinkButtonModule.h"
 #else
@@ -198,11 +204,20 @@ void setupModules()
     LOG_INFO("TrekLink SOS Gesture Module initialized (BUTTON_PIN=%d)", BUTTON_PIN);
 #endif
     
+#if !defined(TREKLINK_V3)
     // TrekLink fall detection — inject sensor adapter for current variant
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
-    // v1.0 default: MPU6050 (will be variant-switched in MV-7)
+#if defined(TREKLINK_V2)
+    fallDetectionModule = new FallDetectionModule(new ICM20948FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (ICM-20948)");
+#elif defined(TREKLINK_V4)
+    fallDetectionModule = new FallDetectionModule(new QMI8658FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (QMI8658)");
+#else // default v1.0
     fallDetectionModule = new FallDetectionModule(new MPU6050FallSensor());
     LOG_INFO("TrekLink Fall Detection Module initialized (MPU6050)");
+#endif
+#endif
 #endif
 #endif
 #if ARCH_PORTDUINO

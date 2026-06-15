@@ -33,12 +33,11 @@ TrekLinkButtonModule::TrekLinkButtonModule()
       lastConfirmPulseTime(0),
       confirmPulseOn(false)
 {
-    // Configure SOS button GPIO — input-only pin (34) requires external pull-up
-    // Note: NO attachInterrupt() — we use polling instead.
-    // ESP32 Errata GPIO-3.14: edge interrupts conflict within GPIO group 32-39.
-    // GPIOs 32 (UP), 34 (SOS), 35 (DOWN) are all in this group.
-    // Polling at 20ms matches the working UpDownInterruptBase pattern.
+#if defined(TREKLINK_V2)
+    pinMode(BTN_SOS, INPUT_PULLUP);
+#else
     pinMode(BTN_SOS, INPUT);
+#endif
     LOG_INFO("TrekLinkButton: SOS button initialized on GPIO %d (polling mode)", BTN_SOS);
 
     // Initialize vibrator GPIO (CRITICAL: was missing — GPIO defaults to INPUT on ESP32)

@@ -16,7 +16,11 @@
 #include "configuration.h"
 
 // SOS Button GPIO (from variant.h)
+#ifdef BUTTON_PIN_SOS
+#define BTN_SOS BUTTON_PIN_SOS
+#else
 #define BTN_SOS 34   // SOS button (input-only, requires external pull-up)
+#endif
 
 // Timing constants (milliseconds)
 #define DEBOUNCE_MS 50

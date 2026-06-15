@@ -5,7 +5,7 @@
 
 ---
 
-- [ ] 1. Create `treklink_v2_0` variant directory and files
+- [x] 1. Create `treklink_v2_0` variant directory and files
   - Create `variants/esp32s3/treklink_v2_0/variant.h` with frozen pin map:
     - I2C: SDA=5, SCL=6
     - GPS UART: RX=16, TX=17, PWR_EN=15
@@ -17,7 +17,7 @@
   - Define `TREKLINK_VARIANT`, `TREKLINK_V2`, `USE_SX1268`, region code `MY_433`
   - _Requirements: REQ-V2-HW-01, REQ-V2-RF-01_
 
-- [ ] 2. Create `treklink_v2_0` PlatformIO build environment
+- [x] 2. Create `treklink_v2_0` PlatformIO build environment
   - Create `variants/esp32s3/treklink_v2_0/platformio.ini`
   - Environment name: `[env:treklink-v2]`, extends `esp32s3_base`
   - Build flags: `-D TREKLINK_VARIANT -D TREKLINK_V2 -D HAS_SCREEN=1`
@@ -26,7 +26,7 @@
   - Verify env is picked up by root `platformio.ini` glob `variants/*/*.ini`
   - _Requirements: REQ-V2-ENV-01_
 
-- [ ] 3. Implement power latch and power-sense logic
+- [x] 3. Implement power latch and power-sense logic
   - Create `variants/esp32s3/treklink_v2_0/variant.cpp` with `earlyInitVariant()`
   - Set GPIO 9 (POWER_LATCH) HIGH within first 100ms of boot
   - Read GPIO 13 (POWER_SENSE) as Active-Low input for cold-start detection
@@ -34,34 +34,34 @@
   - Guard with `#ifdef TREKLINK_V2`
   - _Requirements: REQ-V2-PWR-01, REQ-V2-PWR-02_
 
-- [ ] 4. Implement GPS power enable control
+- [x] 4. Implement GPS power enable control
   - Add `#define GPS_EN_PIN 15` to `variant.h`
   - Drive GPIO 15 HIGH in `earlyInitVariant()` to power GPS module
   - Integrate with Meshtastic GPS power management if possible
   - Ensure GPS powers on at boot and respects sleep settings
   - _Requirements: REQ-V2-GPS-01_
 
-- [ ] 5. Adapt `TrekLinkButtonModule` for v2.0 pin remapping
+- [x] 5. Adapt `TrekLinkButtonModule` for v2.0 pin remapping
   - Replace hardcoded `#define BTN_SOS 34` with `variant.h`-sourced `BUTTON_PIN_SOS`
   - Update `pinMode()`: v2.0 SOS pin (GPIO 4) uses `INPUT_PULLUP` (v1.0 GPIO 34 is input-only)
   - Ensure `PIN_VIBRATOR`, `PIN_BUZZER`, `LED_PIN` read from `variant.h`
   - _Requirements: REQ-V2-BTN-01, REQ-V2-HW-01.6_
 
-- [ ] 6. Adapt `TrekLinkButtonInput` for v2.0 pin remapping
+- [x] 6. Adapt `TrekLinkButtonInput` for v2.0 pin remapping
   - Current code hardcodes v1.0 GPIOs (UP=32, DOWN=35, MENU=25)
   - Use `variant.h` defines: `BUTTON_PIN_UP=7`, `BUTTON_PIN_DOWN=8`, `BUTTON_PIN=0`
   - Update ISR attachment to use variant-defined pins
   - Handle pull-up mode differences between v1.0 and v2.0
   - _Requirements: REQ-V2-BTN-01_
 
-- [ ] 7. Implement `ICM20948FallSensor` adapter
+- [x] 7. Implement `ICM20948FallSensor` adapter
   - New file: `src/modules/sensors/ICM20948FallSensor.h/.cpp`
   - Implement `FallSensorInterface` using `SparkFun ICM-20948` library
   - Map ICM-20948 accel reads to g-force, gyro reads to rad/s
   - Guard with `#ifdef TREKLINK_V2` or `__has_include`
   - _Requirements: REQ-V2-IMU-01_
 
-- [ ] 8. Verify v2.0 environment compiles
+- [x] 8. Verify v2.0 environment compiles
   - Run `pio run -e treklink-v2` — must compile cleanly for ESP32-S3
   - Run `pio run -e treklink` — v1.0 regression check
   - Fix include path, symbol resolution, or link errors
