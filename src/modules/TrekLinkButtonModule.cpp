@@ -9,6 +9,9 @@
  */
 
 #include "TrekLinkButtonModule.h"
+
+#ifdef TREKLINK_VARIANT
+
 #include "TrekLinkSOSHelper.h"
 #include "BuzzerManager.h"
 #include "FallDetectionModule.h"
@@ -316,3 +319,5 @@ int32_t TrekLinkButtonModule::runOnce()
 
     return 20; // Poll every 20ms (matches UpDownInterruptBase)
 }
+
+#endif // TREKLINK_VARIANT

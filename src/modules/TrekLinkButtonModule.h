@@ -11,9 +11,12 @@
 
 #pragma once
 
+#include "configuration.h"
+
+#ifdef TREKLINK_VARIANT
+
 #include "SinglePortModule.h"
 #include "concurrency/OSThread.h"
-#include "configuration.h"
 
 // SOS Button GPIO (from variant.h)
 #ifdef BUTTON_PIN_SOS
@@ -101,3 +104,5 @@ public:
 };
 
 extern TrekLinkButtonModule *trekLinkButtonModule;
+
+#endif // TREKLINK_VARIANT

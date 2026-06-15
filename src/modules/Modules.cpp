@@ -218,6 +218,8 @@ void setupModules()
     LOG_INFO("TrekLink Fall Detection Module initialized (MPU6050)");
 #endif
 #endif
+#else
+    LOG_INFO("FallDetection: Disabled (no IMU on v3.0)");
 #endif
 #endif
 #if ARCH_PORTDUINO

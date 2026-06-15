@@ -8,7 +8,7 @@
 
 #include "FallDetectionModule.h"
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && defined(TREKLINK_VARIANT) && !defined(TREKLINK_V3)
 
 #include "TrekLinkSOSHelper.h"
 #include "BuzzerManager.h"
@@ -314,4 +314,8 @@ int32_t FallDetectionModule::runOnce()
     }
 }
 
-#endif // !ARCH_STM32WL && !MESHTASTIC_EXCLUDE_I2C
+#else
+
+FallDetectionModule *fallDetectionModule = nullptr;
+
+#endif // guard
