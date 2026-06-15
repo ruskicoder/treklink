@@ -17,7 +17,7 @@
 
 #ifdef TREKLINK_VARIANT
 
-#include "SinglePortModule.h"
+#include <cstdint>
 
 // TrekLink message type discriminators (shared across modules)
 #ifndef TREKLINK_MSG_SOS

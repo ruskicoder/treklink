@@ -95,8 +95,13 @@
 #endif
 
 #ifdef TREKLINK_VARIANT
-#include "modules/TrekLinkButtonModule.h"
 #include "modules/FallDetectionModule.h"
+#include "modules/sensors/MPU6050FallSensor.h"
+#ifdef BUTTON_PIN_SOS
+#include "modules/TrekLinkButtonModule.h"
+#else
+#include "modules/TrekLinkSOSGesture.h"
+#endif
 #endif
 
 #if defined(HAS_HARDWARE_WATCHDOG)
@@ -182,14 +187,22 @@ void setupModules()
 #endif
 
 #ifdef TREKLINK_VARIANT
-    // TrekLink custom multi-button support (MENU, SOS, UP, DOWN)
+    // TrekLink SOS module — variant-dependent
+#ifdef BUTTON_PIN_SOS
+    // v1.0/v2.0: Dedicated SOS button → full button module
     trekLinkButtonModule = new TrekLinkButtonModule();
-    LOG_INFO("TrekLink Button Module initialized");
+    LOG_INFO("TrekLink Button Module initialized (dedicated SOS button)");
+#else
+    // v3.0/v4.0: Single user button → gesture-based SOS (3s hold)
+    trekLinkSOSGesture = new TrekLinkSOSGesture();
+    LOG_INFO("TrekLink SOS Gesture Module initialized (BUTTON_PIN=%d)", BUTTON_PIN);
+#endif
     
-    // TrekLink fall detection with MPU6050
+    // TrekLink fall detection — inject sensor adapter for current variant
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
-    fallDetectionModule = new FallDetectionModule();
-    LOG_INFO("TrekLink Fall Detection Module initialized");
+    // v1.0 default: MPU6050 (will be variant-switched in MV-7)
+    fallDetectionModule = new FallDetectionModule(new MPU6050FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (MPU6050)");
 #endif
 #endif
 #if ARCH_PORTDUINO

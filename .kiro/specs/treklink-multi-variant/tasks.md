@@ -96,25 +96,25 @@ STAGE 5: Final Validation (this file)
   - `TrekLinkSOSGesture` (MV-5) will also use this helper
   - _References: TrekLinkButtonModule.cpp L239-L309, FallDetectionModule.cpp L171-L256_
 
-- [ ] MV-2. Define `FallSensorInterface` abstraction
+- [x] MV-2. Define `FallSensorInterface` abstraction
   - New file: `src/modules/FallSensorInterface.h`
   - Pure virtual interface with `init()`, `readAccel(x,y,z)`, `readGyro(x,y,z)`
   - Decouples `FallDetectionModule` from any specific IMU library
   - _References: MotionSensor.h base class pattern_
 
-- [ ] MV-3. Implement `MPU6050FallSensor` adapter
+- [x] MV-3. Implement `MPU6050FallSensor` adapter
   - New file: `src/modules/sensors/MPU6050FallSensor.h/.cpp`
   - Implements `FallSensorInterface` using existing `Adafruit_MPU6050` library
   - Used by v1.0 (perfboard with MPU6050)
   - _References: FallDetectionModule.cpp L278-L298_
 
-- [ ] MV-4. Refactor `FallDetectionModule` to use `FallSensorInterface`
+- [x] MV-4. Refactor `FallDetectionModule` to use `FallSensorInterface`
   - Replace `Adafruit_MPU6050 mpu;` member with `FallSensorInterface* sensor;`
   - Replace `mpu.getEvent()` with `sensor->readAccel()`/`sensor->readGyro()`
   - Accept sensor via constructor: `FallDetectionModule(FallSensorInterface* sensor)`
   - _References: FallDetectionModule.h L7-L11, L65_
 
-- [ ] MV-5. Create `TrekLinkSOSGesture` module for single-button SOS
+- [x] MV-5. Create `TrekLinkSOSGesture` module for single-button SOS
   - New file: `src/modules/TrekLinkSOSGesture.h/.cpp`
   - Polls `BUTTON_PIN` at 20ms, detects 3-second hold
   - On 3s hold: calls `TrekLinkSOSHelper::triggerSOS()` / `cancelSOS()`
@@ -122,7 +122,7 @@ STAGE 5: Final Validation (this file)
   - Guard: `#if defined(TREKLINK_VARIANT) && !defined(BUTTON_PIN_SOS)`
   - _References: v3.0/v4.0 SOS requirements, TrekLinkButtonModule.cpp debounce_
 
-- [ ] MV-6. Register `TrekLinkSOSGesture` in `Modules.cpp`
+- [x] MV-6. Register `TrekLinkSOSGesture` in `Modules.cpp`
   - `#if !defined(BUTTON_PIN_SOS)` → gesture module; else → `TrekLinkButtonModule`
   - _References: Modules.cpp L184-L194_
 

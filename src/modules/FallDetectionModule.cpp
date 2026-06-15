@@ -1,16 +1,17 @@
 /*
  * Fall Detection Module Implementation
  * Automatic fall detection and SOS triggering for unconscious users
+ *
+ * IMU-agnostic: uses FallSensorInterface abstraction.
+ * Sensor adapter is injected via constructor (MPU6050, ICM20948, QMI8658).
  */
 
 #include "FallDetectionModule.h"
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<Adafruit_MPU6050.h>)
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
 
 #include "TrekLinkSOSHelper.h"
 #include "BuzzerManager.h"
-#include "MeshService.h"
-#include "NodeDB.h"
 #include "configuration.h"
 #include "main.h"
 
@@ -19,22 +20,31 @@ FallDetectionModule *fallDetectionModule;
 // F12: Static LUT definition (declared in header)
 constexpr bool FallDetectionModule::SOS_LUT[];
 
-FallDetectionModule::FallDetectionModule()
+FallDetectionModule::FallDetectionModule(FallSensorInterface *sensor)
     : SinglePortModule("FallDetection", meshtastic_PortNum_PRIVATE_APP),
       OSThread("FallDetection"),
       currentState(MONITORING),
-      mpuInitialized(false),  // F5: Lazy init
+      sensor(sensor),
+      sensorInitialized(false),  // F5: Lazy init
       freefallStartTime(0),
       impactTime(0),
       inactivityStartTime(0),
       prealarmStartTime(0),
       lastAlarmBeepTime(0),
-      isBeepOn(false),        // F3: Alarm robustness
+      isBeepOn(false),
       sosPatternStartTime(0),
       sosBuzzerOn(false)
 {
-    // F5: MPU6050 init moved to runOnce() for lazy initialization
-    LOG_INFO("FallDetection: Module created, will init MPU6050 in runOnce()");
+    if (sensor) {
+        LOG_INFO("FallDetection: Module created with %s sensor, will init in runOnce()", sensor->sensorName());
+    } else {
+        LOG_WARN("FallDetection: Module created with no sensor (fall detection disabled)");
+    }
+}
+
+FallDetectionModule::~FallDetectionModule()
+{
+    delete sensor;
 }
 
 void FallDetectionModule::transitionToState(FallState newState)
@@ -45,21 +55,19 @@ void FallDetectionModule::transitionToState(FallState newState)
     currentState = newState;
 }
 
-float FallDetectionModule::calculateTotalAcceleration(sensors_event_t &accel)
+float FallDetectionModule::calculateTotalAcceleration(const SensorVec3 &accel)
 {
-    // Calculate magnitude of acceleration vector
-    return sqrt(sq(accel.acceleration.x) + 
-                sq(accel.acceleration.y) + 
-                sq(accel.acceleration.z)) / 9.81f; // Convert to g-force
+    // Calculate magnitude of acceleration vector, convert to g-force
+    return sqrt(sq(accel.x) + sq(accel.y) + sq(accel.z)) / 9.81f;
 }
 
-float FallDetectionModule::calculateTotalGyro(sensors_event_t &gyro)
+float FallDetectionModule::calculateTotalGyro(const SensorVec3 &gyro)
 {
     // Calculate magnitude of gyroscope vector
-    return sqrt(sq(gyro.gyro.x) + sq(gyro.gyro.y) + sq(gyro.gyro.z));
+    return sqrt(sq(gyro.x) + sq(gyro.y) + sq(gyro.z));
 }
 
-bool FallDetectionModule::checkInactivity(sensors_event_t &accel, sensors_event_t &gyro)
+bool FallDetectionModule::checkInactivity(const SensorVec3 &accel, const SensorVec3 &gyro)
 {
     float totalAccel = calculateTotalAcceleration(accel);
     float totalGyro = calculateTotalGyro(gyro);
@@ -175,21 +183,20 @@ void FallDetectionModule::updateSOSBuzzerPattern()
 
 int32_t FallDetectionModule::runOnce()
 {
-    // F5: Lazy init — attempt MPU6050 init in thread context with 5s retry
-    if (!mpuInitialized) {
-        Wire.begin(I2C_SDA, I2C_SCL);
-        if (!mpu.begin(0x68)) {
-            LOG_WARN("FallDetection: MPU6050 not ready, retrying in 5s");
+    // No sensor → fall detection disabled (e.g., v3.0 T-Beam, no IMU)
+    if (!sensor) {
+        return disable(); // Stop thread permanently
+    }
+
+    // F5: Lazy init — attempt sensor init in thread context with 5s retry
+    if (!sensorInitialized) {
+        if (!sensor->init()) {
+            LOG_WARN("FallDetection: %s not ready, retrying in 5s", sensor->sensorName());
             return 5000; // Retry in 5 seconds
         }
         
-        // Configure MPU6050 for fall detection
-        mpu.setAccelerometerRange(MPU6050_RANGE_8_G);  // ±8g range for impact detection
-        mpu.setGyroRange(MPU6050_RANGE_500_DEG);        // ±500°/s for rotation detection
-        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);     // Low-pass filter to reduce noise
-        
-        mpuInitialized = true;
-        LOG_INFO("FallDetection: MPU6050 initialized, state=MONITORING");
+        sensorInitialized = true;
+        LOG_INFO("FallDetection: %s initialized, state=MONITORING", sensor->sensorName());
 
         // Safety: ensure vibrator pin is OUTPUT (may already be set by TrekLinkButtonModule)
 #ifdef PIN_VIBRATOR
@@ -215,9 +222,12 @@ int32_t FallDetectionModule::runOnce()
         return 200; // F14: Align with 200ms LUT slots, no I2C needed
     }
 
-    // Read sensor data (only for non-SOS states)
-    sensors_event_t accel, gyro, temp;
-    mpu.getEvent(&accel, &gyro, &temp);
+    // Read sensor data via FallSensorInterface (only for non-SOS states)
+    SensorVec3 accel, gyro;
+    if (!sensor->readAccel(accel) || !sensor->readGyro(gyro)) {
+        LOG_WARN("FallDetection: Sensor read failed");
+        return 500; // Retry
+    }
     
     float totalAccel = calculateTotalAcceleration(accel);
     float totalGyro = calculateTotalGyro(gyro);
@@ -304,4 +314,4 @@ int32_t FallDetectionModule::runOnce()
     }
 }
 
-#endif // MPU6050 available
+#endif // !ARCH_STM32WL && !MESHTASTIC_EXCLUDE_I2C
