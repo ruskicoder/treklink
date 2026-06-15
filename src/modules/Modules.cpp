@@ -95,6 +95,7 @@
 #endif
 
 #ifdef TREKLINK_VARIANT
+#include "modules/TrekLinkVariantValidation.h"
 #include "modules/FallDetectionModule.h"
 #if defined(TREKLINK_V2)
 #include "modules/sensors/ICM20948FallSensor.h"
@@ -193,6 +194,7 @@ void setupModules()
 #endif
 
 #ifdef TREKLINK_VARIANT
+    LOG_INFO("Variant: %s", TREKLINK_VARIANT_NAME);
     // TrekLink SOS module — variant-dependent
 #ifdef BUTTON_PIN_SOS
     // v1.0/v2.0: Dedicated SOS button → full button module

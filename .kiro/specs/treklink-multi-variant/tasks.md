@@ -130,21 +130,21 @@ STAGE 5: Final Validation (this file)
 
 ## Stage 5: Final Validation
 
-- [ ] MV-7. Wire all sensor selection in `Modules.cpp`
+- [x] MV-7. Wire all sensor selection in `Modules.cpp`
   - `#ifdef TREKLINK_V2` → `new ICM20948FallSensor()`
   - `#ifdef TREKLINK_V4` → `new QMI8658FallSensor()`
   - Default (v1.0) → `new MPU6050FallSensor()`
   - v3.0 → skip fall detection (no IMU)
   - _References: AccelerometerThread.h pattern_
 
-- [ ] MV-8. Verify ALL environments compile (full regression)
+- [x] MV-8. Verify ALL environments compile (full regression)
   - `pio run -e treklink` (v1.0)
   - `pio run -e treklink-v2` (v2.0)
   - `pio run -e treklink-v3-tbeam` (v3.0)
   - `pio run -e treklink-v4-supreme` (v4.0)
   - Also verify stock targets: `pio run -e tbeam`, `pio run -e tbeam-s3-core`
 
-- [ ] MV-9. Add compile-time variant validation
+- [x] MV-9. Add compile-time variant validation
   - `static_assert` guards for GPIO defines per variant
   - Boot-time log: print active variant name
   - _References: variant.h defines per environment_
