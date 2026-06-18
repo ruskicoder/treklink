@@ -52,6 +52,7 @@ FallDetectionModule::FallDetectionModule()
       preFallAccelEMA(1.0f),
       lastNormalAccelG(1.0f),
       freefallMaxGyro(0.0f),
+      freefallMinAccel(0.0f),
       peakImpactG(0.0f),
       gyroAtPeakG(0.0f),
       peakJerk(0.0f),
@@ -157,10 +158,10 @@ bool FallDetectionModule::runMLInference()
     float not_fall = (out->data.int8[0] - out_zero) * out_sc;
     float fall     = (out->data.int8[1] - out_zero) * out_sc;
 
-    LOG_INFO("FallDetection: ML fall=%.3f not_fall=%.3f -> %s",
-             fall, not_fall, fall > not_fall ? "FALL" : "not_fall");
+    LOG_INFO("FallDetection: ML fall=%.3f not_fall=%.3f threshold=%.2f -> %s",
+             fall, not_fall, ML_FALL_THRESHOLD, fall >= ML_FALL_THRESHOLD ? "FALL" : "not_fall");
 
-    return fall > not_fall;
+    return fall >= ML_FALL_THRESHOLD;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -203,6 +204,7 @@ void FallDetectionModule::resetFallData()
     // preFallAccelEMA and lastNormalAccelG are intentionally NOT reset here —
     // they are accumulated during MONITORING and read at freefall entry.
     freefallMaxGyro      = 0.0f;
+    freefallMinAccel     = FREEFALL_THRESHOLD;  // will be driven down during freefall phase
     peakImpactG          = 0.0f;
     gyroAtPeakG          = 0.0f;
     peakJerk             = 0.0f;
@@ -510,14 +512,24 @@ int32_t FallDetectionModule::runOnce()
     case FREEFALL_DETECTED:
         if (totalGyro_rads > freefallMaxGyro)
             freefallMaxGyro = totalGyro_rads;
+        if (totalAccel_g < freefallMinAccel)
+            freefallMinAccel = totalAccel_g;
 
         if (totalAccel_g >= FREEFALL_THRESHOLD) {
             unsigned long dur = now - freefallStartTime;
             if (dur >= FREEFALL_MIN_DURATION) {
-                impactTime = now;
-                prevAccelG = totalAccel_g;
-                transitionToState(IMPACT_DETECTED);
-                LOG_INFO("FallDetection: Freefall %lums maxGyro=%.2frad/s", dur, freefallMaxGyro);
+                if (freefallMinAccel > FREEFALL_DEPTH_MIN) {
+                    // Shallow dip — too high to be real freefall (bump / step / sensor noise)
+                    LOG_DEBUG("FallDetection: Shallow freefall (min=%.2fg > %.2fg) — ignored",
+                              freefallMinAccel, FREEFALL_DEPTH_MIN);
+                    transitionToState(MONITORING);
+                } else {
+                    impactTime = now;
+                    prevAccelG = totalAccel_g;
+                    transitionToState(IMPACT_DETECTED);
+                    LOG_INFO("FallDetection: Freefall %lums minAccel=%.2fg maxGyro=%.2frad/s",
+                             dur, freefallMinAccel, freefallMaxGyro);
+                }
             } else {
                 transitionToState(MONITORING);
             }
@@ -537,10 +549,11 @@ int32_t FallDetectionModule::runOnce()
         }
 
         // Spike counting and phase duration
+        // impactSpikeCount is only incremented when a spike ENDS and lasted ≥ MIN_IMPACT_SPIKE_MS,
+        // filtering single-sample sensor glitches and vibration transients.
         if (totalAccel_g > IMPACT_THRESHOLD) {
             if (!inImpactSpike) {
                 inImpactSpike = true;
-                impactSpikeCount++;
                 spikeStartTime = now;
                 if (!impactWindowActive) {
                     impactWindowActive = true;
@@ -548,8 +561,11 @@ int32_t FallDetectionModule::runOnce()
                 }
             }
         } else if (inImpactSpike) {
-            inImpactSpike        = false;
-            impactPhaseDuration += (now - spikeStartTime);
+            unsigned long spikeDur = now - spikeStartTime;
+            inImpactSpike          = false;
+            impactPhaseDuration   += spikeDur;
+            if (spikeDur >= MIN_IMPACT_SPIKE_MS)
+                impactSpikeCount++;
         }
 
         bool windowDone = impactWindowActive && (now - impactWindowStart) >= IMPACT_WINDOW_MS;
@@ -558,7 +574,10 @@ int32_t FallDetectionModule::runOnce()
         if (windowDone) {
             // Close any open spike
             if (inImpactSpike) {
-                impactPhaseDuration += (now - spikeStartTime);
+                unsigned long spikeDur = now - spikeStartTime;
+                impactPhaseDuration   += spikeDur;
+                if (spikeDur >= MIN_IMPACT_SPIKE_MS)
+                    impactSpikeCount++;
                 inImpactSpike = false;
             }
 

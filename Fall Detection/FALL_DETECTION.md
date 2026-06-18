@@ -77,12 +77,13 @@ The physics pre-filter (freefall threshold + impact spike) means the ML model on
 
 ```python
 # train_fall_detection.py
+_SEED        = 42          # fixed seed — reproducible runs across Kaggle sessions
 class_weight = {0: 1.0, 1: 2.5}   # not_falling / fall
 
 # FallRecallCallback
 MIN_OTHER_RECALL = 0.45   # not_falling floor — relax if fall recall too low
 WARMUP_EPOCHS    = 10     # skip callback during chaotic early training
-PATIENCE         = 15     # early stop if score stalls
+PATIENCE         = 25     # early stop if score stalls (was 15 — extra runway)
 
 # ReduceLROnPlateau
 factor=0.5, patience=8, min_lr=1e-6
@@ -96,10 +97,12 @@ factor=0.5, patience=8, min_lr=1e-6
    ```
    python train_fall_detection.py --model CNN1D --mode binary
    ```
-4. Check the **FINAL SUMMARY** printed at the end. Target:
-   - `fall` recall in `best_recall (DEPLOY)` row ≥ 0.95
-   - `not_falling` recall ≥ 0.45
-5. Download `model_cnn1d_binary_best_recall_quantized.tflite` and `norm_stats_binary.json` into `Fall Detection/Context/`
+4. At the end of training, the script prints either:
+   - `*** DEPLOY READY ***` → download `DEPLOY_READY__recall0.XXX__model_cnn1d_binary_best_recall_quantized.tflite`
+   - `*** TRAINING FAILED — DO NOT DEPLOY ***` → output has `BAD_MODEL__...tflite` instead; **do not download**, just rerun
+5. If deploy-ready: download `DEPLOY_READY__recall0.XXX__...tflite` (rename to `model_cnn1d_binary_best_recall_quantized.tflite`) and `norm_stats_binary.json` into `Fall Detection/Context/`
+
+   **Safety rule: never download a file that doesn't start with `DEPLOY_READY__`.**
 6. Regenerate the firmware C array:
    ```
    python -c "

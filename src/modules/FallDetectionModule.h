@@ -90,6 +90,7 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
 
     // ── Freefall phase ─────────────────────────────────────────────────────
     float freefallMaxGyro;    // peak gyro magnitude seen during freefall
+    float freefallMinAccel;   // minimum accel seen during freefall — must reach FREEFALL_DEPTH_MIN
 
     // ── Impact phase ──────────────────────────────────────────────────────
     float         peakImpactG;          // max accel magnitude in impact window
@@ -114,9 +115,10 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
 
     // ── Detection thresholds ───────────────────────────────────────────────
     static constexpr float         FREEFALL_THRESHOLD       = 0.5f;   // g
-    static constexpr float         IMPACT_THRESHOLD         = 3.0f;   // g
+    static constexpr float         IMPACT_THRESHOLD         = 3.5f;   // g — raised from 3.0; running footstrike peaks ~2.5–3g (was 3.0)
     static constexpr float         GYRO_STILLNESS_THRESHOLD = 0.1f;   // rad/s
-    static constexpr unsigned long FREEFALL_MIN_DURATION    = 80;     // ms — ignore noise dips
+    static constexpr unsigned long FREEFALL_MIN_DURATION    = 120;    // ms — real freefall ≥ 120ms; filters noise/bumps (was 80)
+    static constexpr float         FREEFALL_DEPTH_MIN       = 0.35f;  // g — freefall must dip below this; real falls reach ~0.05–0.2g, bumps ~0.3–0.45g
     static constexpr unsigned long INACTIVITY_DURATION      = 10000;  // ms
     static constexpr unsigned long PREALARM_TIMEOUT         = 30000;  // ms
     static constexpr unsigned long ALARM_BEEP_INTERVAL      = 1000;   // ms
@@ -125,8 +127,9 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
     static constexpr unsigned long FREEFALL_TRIP_MAX_MS     = 200;    // < this = FALL_TRIP
     static constexpr unsigned long FREEFALL_ELEVATED_MIN_MS = 500;    // > this = FALL_ELEVATED
     static constexpr unsigned long IMPACT_WINDOW_MS         = 1000;   // characterization window after first spike
-    static constexpr unsigned long IMPACT_TIMEOUT_MS        = 3000;   // give up if no spike
+    static constexpr unsigned long IMPACT_TIMEOUT_MS        = 1500;   // give up if no spike — real impact arrives within ~500ms (was 3000)
     static constexpr unsigned long IMPACT_PROLONGED_MS      = 400;    // ms above threshold = FALL_PROLONGED_IMPACT
+    static constexpr unsigned long MIN_IMPACT_SPIKE_MS      = 40;     // spike must hold ≥ 40ms (~2 samples) to count — filters glitches
     static constexpr float         IMPACT_G_HIGH            = 4.0f;   // g — FALL_HIGH_IMPACT
     static constexpr float         TUMBLE_GYRO_THRESHOLD    = 2.0f;   // rad/s during freefall
     static constexpr float         ROT_AT_IMPACT_THRESHOLD  = 1.5f;   // rad/s at peak G
@@ -146,9 +149,10 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
     // ── ML Stage 1 — inference ────────────────────────────────────────────
     static constexpr int   IMU_BUFFER_LEN    = 128;
     static constexpr int   TENSOR_ARENA_SIZE = 24 * 1024;
+    static constexpr float ML_FALL_THRESHOLD = 0.54f;  // raised from 0.50 (argmax); see MODEL_RESULTS.md threshold table
     // Z-score params from norm_stats_binary.json — axes: ax ay az gx gy gz
-    static constexpr float NORM_MEAN[6] = { 0.250f, -5.139f, -0.860f, -0.012f,  0.053f, -0.002f };
-    static constexpr float NORM_STD[6]  = { 4.921f,  6.045f,  5.358f,  0.710f,  0.651f,  0.480f };
+    static constexpr float NORM_MEAN[6] = { 0.340f, -6.405f, -0.901f, -0.001f,  0.073f, -0.002f };
+    static constexpr float NORM_STD[6]  = { 4.171f,  5.627f,  4.682f,  0.720f,  0.659f,  0.472f };
 
     float                     imuBuffer[IMU_BUFFER_LEN][6];
     int                       bufferHead;
