@@ -243,6 +243,13 @@ void doDeepSleep(uint32_t msecToWake, bool skipPreflight = false, bool skipSaveN
     pinMode(PIN_POWER_EN, INPUT); // power off peripherals
 #endif
 
+#ifdef POWER_LATCH_PIN
+    LOG_INFO("Cutting power latch (GPIO %d)", POWER_LATCH_PIN);
+    pinMode(POWER_LATCH_PIN, OUTPUT);
+    digitalWrite(POWER_LATCH_PIN, LOW);
+    delay(500); // Wait for capacitors to discharge
+#endif
+
 #ifdef RAK_WISMESH_TAP_V2
     digitalWrite(SDCARD_CS, LOW);
 #endif

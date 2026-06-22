@@ -4,27 +4,33 @@
 #include "concurrency/OSThread.h"
 #include "configuration.h"
 
-#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && __has_include(<Adafruit_MPU6050.h>)
+#if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && defined(TREKLINK_VARIANT) && !defined(TREKLINK_V3)
 
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#include <Wire.h>
+#include "FallSensorInterface.h"
 
-// TrekLink message type discriminator (F8 - shared with TrekLinkButtonModule.h)
+// TrekLink message type discriminator (F8 - shared with TrekLinkSOSHelper.h)
 #ifndef TREKLINK_MSG_FALL
 #define TREKLINK_MSG_FALL 0x02
 #endif
 
 /**
  * Fall Detection Module for TrekLink
- * Monitors MPU6050 accelerometer/gyroscope for fall patterns
- * Triggers automatic SOS if user becomes unconscious after fall
+ * Monitors IMU accelerometer/gyroscope for fall patterns via FallSensorInterface.
+ * Triggers automatic SOS if user becomes unconscious after fall.
+ *
+ * IMU-agnostic: accepts any FallSensorInterface adapter (MPU6050, ICM20948, QMI8658).
  */
 
 class FallDetectionModule : public SinglePortModule, public concurrency::OSThread
 {
   public:
-    FallDetectionModule();
+    /**
+     * @param sensor  Pointer to an IMU adapter implementing FallSensorInterface.
+     *                Ownership is transferred to this module (will be deleted in destructor).
+     *                Pass nullptr to disable fall detection (e.g., v3.0 T-Beam with no IMU).
+     */
+    explicit FallDetectionModule(FallSensorInterface *sensor);
+    ~FallDetectionModule();
 
     /**
      * Cancel fall detection alarm during PRE_ALARM (called by any button press)
@@ -62,8 +68,8 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
     };
 
     FallState currentState;
-    Adafruit_MPU6050 mpu;
-    bool mpuInitialized; // F5: Lazy init flag
+    FallSensorInterface *sensor;  // IMU adapter (owned, may be nullptr)
+    bool sensorInitialized;      // Lazy init flag
 
     // Timing trackers
     unsigned long freefallStartTime;
@@ -98,9 +104,9 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
 
     // Helper methods
     void transitionToState(FallState newState);
-    float calculateTotalAcceleration(sensors_event_t &accel);
-    float calculateTotalGyro(sensors_event_t &gyro);
-    bool checkInactivity(sensors_event_t &accel, sensors_event_t &gyro);
+    float calculateTotalAcceleration(const SensorVec3 &accel);
+    float calculateTotalGyro(const SensorVec3 &gyro);
+    bool checkInactivity(const SensorVec3 &accel, const SensorVec3 &gyro);
     
     void activatePreAlarm();
     void deactivatePreAlarm();
@@ -111,4 +117,16 @@ class FallDetectionModule : public SinglePortModule, public concurrency::OSThrea
 
 extern FallDetectionModule *fallDetectionModule;
 
-#endif // MPU6050 available
+#else // stub for non-TrekLink or TREKLINK_V3 builds
+
+class FallDetectionModule {
+  public:
+    void cancelFallAlarm() {}
+    void cancelAutoSOS() {}
+    bool isInPreAlarm() const { return false; }
+    bool isInSOSTriggered() const { return false; }
+};
+
+extern FallDetectionModule *fallDetectionModule;
+
+#endif // guard

@@ -95,8 +95,20 @@
 #endif
 
 #ifdef TREKLINK_VARIANT
-#include "modules/TrekLinkButtonModule.h"
+#include "modules/TrekLinkVariantValidation.h"
 #include "modules/FallDetectionModule.h"
+#if defined(TREKLINK_V2)
+#include "modules/sensors/ICM20948FallSensor.h"
+#elif defined(TREKLINK_V4)
+#include "modules/sensors/QMI8658FallSensor.h"
+#elif !defined(TREKLINK_V3)
+#include "modules/sensors/MPU6050FallSensor.h"
+#endif
+#ifdef BUTTON_PIN_SOS
+#include "modules/TrekLinkButtonModule.h"
+#else
+#include "modules/TrekLinkSOSGesture.h"
+#endif
 #endif
 
 #if defined(HAS_HARDWARE_WATCHDOG)
@@ -182,14 +194,34 @@ void setupModules()
 #endif
 
 #ifdef TREKLINK_VARIANT
-    // TrekLink custom multi-button support (MENU, SOS, UP, DOWN)
+    LOG_INFO("Variant: %s", TREKLINK_VARIANT_NAME);
+    // TrekLink SOS module — variant-dependent
+#ifdef BUTTON_PIN_SOS
+    // v1.0/v2.0: Dedicated SOS button → full button module
     trekLinkButtonModule = new TrekLinkButtonModule();
-    LOG_INFO("TrekLink Button Module initialized");
+    LOG_INFO("TrekLink Button Module initialized (dedicated SOS button)");
+#else
+    // v3.0/v4.0: Single user button → gesture-based SOS (3s hold)
+    trekLinkSOSGesture = new TrekLinkSOSGesture();
+    LOG_INFO("TrekLink SOS Gesture Module initialized (BUTTON_PIN=%d)", BUTTON_PIN);
+#endif
     
-    // TrekLink fall detection with MPU6050
+#if !defined(TREKLINK_V3)
+    // TrekLink fall detection — inject sensor adapter for current variant
 #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C
-    fallDetectionModule = new FallDetectionModule();
-    LOG_INFO("TrekLink Fall Detection Module initialized");
+#if defined(TREKLINK_V2)
+    fallDetectionModule = new FallDetectionModule(new ICM20948FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (ICM-20948)");
+#elif defined(TREKLINK_V4)
+    fallDetectionModule = new FallDetectionModule(new QMI8658FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (QMI8658)");
+#else // default v1.0
+    fallDetectionModule = new FallDetectionModule(new MPU6050FallSensor());
+    LOG_INFO("TrekLink Fall Detection Module initialized (MPU6050)");
+#endif
+#endif
+#else
+    LOG_INFO("FallDetection: Disabled (no IMU on v3.0)");
 #endif
 #endif
 #if ARCH_PORTDUINO

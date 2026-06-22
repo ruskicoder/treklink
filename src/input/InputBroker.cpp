@@ -29,7 +29,7 @@
 #include "input/kbMatrixImpl.h"
 #endif
 
-#ifdef TREKLINK_VARIANT
+#if defined(TREKLINK_VARIANT) && defined(BUTTON_PIN_SOS)
 #include "input/TrekLinkButtonInput.h"
 #endif
 
@@ -272,7 +272,7 @@ void InputBroker::Init()
     BackButtonThread->initButton(backConfig);
 #endif
 
-#if defined(BUTTON_PIN) && !defined(TREKLINK_VARIANT)
+#if defined(BUTTON_PIN) && (!defined(TREKLINK_VARIANT) || !defined(BUTTON_PIN_SOS))
 #if defined(USERPREFS_BUTTON_PIN)
     int _pinNum = config.device.button_gpio ? config.device.button_gpio : USERPREFS_BUTTON_PIN;
 #else
@@ -384,7 +384,7 @@ void InputBroker::Init()
         trackballInterruptImpl1->init(TB_DOWN, TB_UP, TB_LEFT, TB_RIGHT, TB_PRESS);
     }
 #endif
-#ifdef TREKLINK_VARIANT
+#if defined(TREKLINK_VARIANT) && defined(BUTTON_PIN_SOS)
     // TrekLink 3-button navigation (UP, DOWN, MENU)
     // SOS button is handled separately in TrekLinkButtonModule
     trekLinkButtonInput = new TrekLinkButtonInput();

@@ -10,11 +10,16 @@ TrekLinkButtonInput::TrekLinkButtonInput() : UpDownInterruptBase("TrekLinkNav") 
 
 bool TrekLinkButtonInput::init()
 {
-    // TrekLink variant has fixed GPIO pins for navigation buttons
-    // These are hardcoded as they are specific to TrekLink hardware design
+    // Map button pins to variant.h definitions with fallbacks
+#if defined(BUTTON_PIN_UP) && defined(BUTTON_PIN_DOWN) && defined(BUTTON_PIN)
+    uint8_t pinUp = BUTTON_PIN_UP;
+    uint8_t pinDown = BUTTON_PIN_DOWN;
+    uint8_t pinPress = BUTTON_PIN;
+#else
     uint8_t pinUp = 32;      // UP button
     uint8_t pinDown = 35;    // DOWN button (input-only, requires external pull-up)
     uint8_t pinPress = 25;   // MENU button
+#endif
 
     // Map to standard InputBroker events for Meshtastic compatibility
     // This ensures TrekLink navigation works globally with all Meshtastic modules
@@ -38,7 +43,7 @@ bool TrekLinkButtonInput::init()
     // Register with InputBroker for global event distribution
     inputBroker->registerSource(this);
     
-    LOG_INFO("TrekLinkButtonInput: Initialized (UP=32, DOWN=35, MENU=25)");
+    LOG_INFO("TrekLinkButtonInput: Initialized (UP=%d, DOWN=%d, MENU=%d)", pinUp, pinDown, pinPress);
     return true;
 }
 

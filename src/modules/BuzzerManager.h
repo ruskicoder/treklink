@@ -9,6 +9,9 @@
 
 #include "configuration.h"
 
+// BuzzerOwner enum is always available (referenced by SOS/Fall modules on all variants)
+enum BuzzerOwner : uint8_t { OWNER_NONE = 0, OWNER_FALL, OWNER_SOS };
+
 #ifdef PIN_BUZZER
 
 #include <freertos/FreeRTOS.h>
@@ -17,8 +20,6 @@
 #ifndef BUZZER_LEDC_CHANNEL
 #define BUZZER_LEDC_CHANNEL 0
 #endif
-
-enum BuzzerOwner : uint8_t { OWNER_NONE = 0, OWNER_FALL, OWNER_SOS };
 
 class BuzzerManager {
   public:

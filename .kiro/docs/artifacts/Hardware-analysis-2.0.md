@@ -17,7 +17,7 @@
 
 ## Proposed Changes
 
-### 1. MCU — ESP32-S3-WROOM-1 (N16R8)
+### 1. MCU — ESP32-S3-WROOM-1 (N8R8)
 
 > [!IMPORTANT]
 > This is the **single most impactful upgrade** and requires user confirmation.
@@ -28,7 +28,7 @@
 |--------|-----------------|-------------------|
 | **Architecture** | Xtensa LX6 | Xtensa LX7 (faster, more efficient) |
 | **Bluetooth** | BT 4.2 | **BT 5.0 LE** (better range for app pairing) |
-| **Flash/PSRAM** | 4MB flash / no PSRAM | **16MB flash / 8MB PSRAM** (N16R8) |
+| **Flash/PSRAM** | 4MB flash / no PSRAM | **8MB flash / 8MB PSRAM** (N8R8) |
 | **USB** | Requires external CP2102 | **Native USB-OTG** (no UART-USB bridge chip!) |
 | **GPIO Count** | 34 (many restricted) | **45** (more flexible) |
 | **Power** | Higher idle current | Better deep sleep optimization |
@@ -238,36 +238,29 @@ Per answers.md: 3D print locally in HCMC.
 
 | Component | Type | Assembly |
 |-----------|------|----------|
-| TPS63802 buck-boost circuit | SMD IC + passives | **PCBA** |
-| Battery charger (BQ24074 or TP4056) | SMD IC + passives | **PCBA** |
-| Battery protection (DW01A + FS8205A) | SMD | **PCBA** |
-| Voltage divider (100kΩ × 2) | SMD 0402/0603 | **PCBA** |
-| I2C pull-ups (4.7kΩ × 2) | SMD 0603 | **PCBA** |
-| Button pull-up/down resistors | SMD 0603 | **PCBA** |
-| Decoupling caps (100nF × N) | SMD 0402 | **PCBA** |
-| Bulk caps (100µF, 22µF) | SMD | **PCBA** |
-| NPN transistor (S8050 → S8050 SMD) | SOT-23 | **PCBA** |
-| Flyback diodes | SMD | **PCBA** |
-| LED (status) | SMD 0805 | **PCBA** |
-| USB-C connector | SMD | **PCBA** |
-| ESD protection | SMD | **PCBA** |
+| **ESP32-S3-WROOM-1-N8R8** | SMD castellated module | **PCBA** |
+| **E22-400M22S LoRa** | SMD castellated module | **PCBA** |
+| **NEO-M9N GNSS** | SMD castellated module (LCC-24) | **PCBA** |
+| **ICM-20948 IMU** | SMD QFN-24 chip | **PCBA** |
+| **TPS63802 buck-boost** | SMD VSON-10 IC + passives | **PCBA** |
+| **BQ24074 charger** | SMD QFN-16 IC + passives | **PCBA** |
+| **DW01A + FS8205A** | SMD protection IC + Dual MOSFET | **PCBA** |
+| **USB-C Connector** | SMD 16-pin (USB4105-GF-A) | **PCBA** |
+| **IPEX/U.FL receptacles** | SMD coaxial RF connector (C130006) x2 | **PCBA** |
+| **Passives & Transistors** | SMD resistors/caps (0402/0603/0805), NPN, diodes, TVS | **PCBA** |
 
-### What Gets Hand-Soldered (Through-Hole for v2.0)
+### What Gets Hand-Soldered / Mounted Separately (v2.0 Assembly)
 
 | Component | Mounting | Notes |
 |-----------|----------|-------|
-| **ESP32-S3-WROOM-1** | Castellated/DIP header | Module on pin headers for replaceability |
-| **SX1262 LoRa module** | Through-hole/castellated | E22 or Ra-01SC with pin header |
-| **NEO-M9N GPS module** | Through-hole breakout | With ceramic patch antenna |
-| **ICM-20948 IMU module** | Through-hole breakout | GY-ICM20948 or similar |
-| **SSD1306 OLED** | 4-pin header | 0.96" I2C |
-| **4× Tactile buttons** | Through-hole | 12×12mm waterproof |
-| **Buzzer** | Through-hole | Passive 9mm |
-| **Vibration motor** | Wire-to-pad | Coin type 10mm |
-| **SMA antenna connector** | Through-hole | Edge-mount |
-| **Battery connector** | Through-hole | JST-PH 2-pin |
-| **Power switch** | Through-hole | Slide switch |
-| **21700 battery holder** | Wire-to-pad | 2P parallel holder |
+| **SSD1306 OLED** | 4-pin straight female header | Plugs into female header on top PCB side |
+| **4× Tactile buttons** | Through-hole (12×12mm waterproof) | Placed at bottom/sides, protrudes through case |
+| **Slide Switch** | Through-hole (SS-22F32 slide switch) | Main power switch |
+| **Buzzer** | Through-hole (9×4.2mm passive) | Sound notification |
+| **Vibration motor** | Wire-to-pad (10mm coin) | Glued to shell, wires soldered to pads |
+| **CR1220 battery** | Tabbed coin cell (solder tabs) | GPS backup battery, soldered flat to PCB pads |
+| **Battery holder** | Wire-to-pad or JST connector | 2P parallel 21700 holder |
+| **SMA connectors** | Panel-mount SMA female with pigtail | Mounts to enclosure, plugs into PCB IPEX receptacles |
 
 ---
 
@@ -301,7 +294,7 @@ The ESP32-S3 is strongly recommended for v2.0 based on research:
 - More GPIO flexibility for PCB routing
 - Better BT 5.0 for app connectivity
 
-**Are you comfortable with ESP32-S3-WROOM-1 (N16R8)?** The v1.0 firmware variant will need a new variant directory but pin mapping is straightforward.
+**Are you comfortable with ESP32-S3-WROOM-1 (N8R8)?** The v1.0 firmware variant will need a new variant directory but pin mapping is straightforward.
 
 ### Q2: LoRa Radio — SX1262 Confirmed?
 SX1278 is legacy in Meshtastic. Upgrading to SX1262 is critical for:
