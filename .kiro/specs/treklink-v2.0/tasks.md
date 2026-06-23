@@ -3,6 +3,19 @@
 > **Scope:** Custom PCB variant — ESP32-S3 + SX1268 + ICM-20948  
 > **Status:** DRAFT — Awaiting Review
 
+> [!CAUTION]
+> **CRITICAL, must attention!**
+> **Hardware Caution Note (v2.0 Custom PCB ONLY):**
+> Due to a known hardware design limitation in the v2.0 custom PCB, the power latch circuit cannot maintain power until the firmware drives GPIO 9 high. Additionally, Linux `ModemManager` probes native ESP32-S3 USB CDC on boot, toggling DTR/RTS and inducing a reset loop.
+> **Flashing/Recovery Boot Sequence (Manual Latch Recovery):**
+> 1. Stop ModemManager on the host PC: `sudo systemctl stop ModemManager`
+> 2. Press and hold both `POWER` and `SELECT` (GPIO 0) simultaneously, then immediately click `RESET`.
+> 3. Release `SELECT`, keeping `POWER` held.
+> 4. Clamp the power terminals (e.g. use a clamp on the `POWER` button) to act as a hold and keep the 3.3V rail active.
+> 5. Release manual pressure on the power button (the clamp now holds the power state).
+> 6. Run the flashing command: `pio run -e treklink-v2 -t upload` (keep clamp on until completed).
+> 7. Release power (remove clamp) and verify that the device stays on automatically (via GPIO 9 latch) and the SH1106 OLED displays the UI.
+
 ---
 
 - [x] 1. Create `treklink_v2_0` variant directory and files

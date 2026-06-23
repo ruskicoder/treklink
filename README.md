@@ -106,6 +106,53 @@ Pairing via the mobile app will advertise the BLE name as `TrekLink_XXXX` (based
 
 ---
 
+## ⚠️ Hardware Caution: Flashing & Recovery (v2.0 Only)
+
+> [!CAUTION]
+> **CRITICAL, must attention!**
+> The TrekLink v2.0 Custom PCB has a known hardware limitation affecting the boot power latch and USB CDC reset lines.
+> **Note:** Other variants (v1.0, v3.0, v4.0) are NOT affected by this issue.
+
+### Root Cause Analysis
+1. **Linux ModemManager Probe (Major):**
+   - Linux `ModemManager` detects `/dev/ttyACM0` (native ESP32-S3 USB CDC).
+   - It probes the port by opening it and toggling DTR/RTS lines.
+   - On the ESP32-S3, toggling DTR/RTS forces a chip reset, dropping the USB connection and creating a cyclic disconnect/reconnect loop.
+2. **Soft-Latch Power Drop:**
+   - On a blank or unlatched flash, `IO9_PWR_EN` (GPIO 9) remains low/floating.
+   - Power stays ON only while physically holding the `POWER` button (SW3). Releasing it instantly cuts the 3.3V rail.
+
+---
+
+### Resolution & Flashing Sequence
+
+To recover and flash the v2.0 board, follow this exact sequence:
+
+1. **Stop ModemManager (on Host PC):**
+   ```bash
+   sudo systemctl stop ModemManager
+   ```
+
+2. **Manual Download & Recovery Sequence:**
+   - **Step 1:** Press and hold `POWER` and `SELECT` (acts as BOOT / GPIO 0) buttons simultaneously, then immediately click `RESET`.
+   - **Step 2:** Release `SELECT`, but continue holding `POWER`.
+   - **Step 3:** Clamp the power terminals (e.g. use a clamp on the `POWER` button) so the clamp acts as a physical hold. This keeps the 3.3V rail powered without manual hold.
+   - **Step 4:** Release manual pressure on the power button. The clamp now holds the power state.
+   - **Step 5:** Keep the clamp on until the upload finishes.
+
+3. **Flash the Firmware:**
+   ```bash
+   pio run -e treklink-v2 -t upload
+   ```
+
+4. **Post-Flash Verification:**
+   - Release the power button/remove the clamp.
+   - Verify that the device stays powered on automatically (confirming that the latch on GPIO 9 is holding).
+   - Check that the SH1106 OLED screen turns on and displays the UI.
+
+---
+
+
 ## 📜 License
 
 - **TrekLink Custom Additions:** MIT License
