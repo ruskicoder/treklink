@@ -400,13 +400,17 @@ bool initLoRa()
     }
 #endif
     if ((!rIf) && (config.lora.region != meshtastic_Config_LoRaConfig_RegionCode_LORA_24)) {
-        rIf = new SX1268Interface(RadioLibHAL, SX126X_CS, SX126X_DIO1, SX126X_RESET, SX126X_BUSY);
-        if (!rIf->init()) {
+        auto *sxIf = new SX1268Interface(RadioLibHAL, SX126X_CS, SX126X_DIO1, SX126X_RESET, SX126X_BUSY);
+#ifdef SX126X_DIO3_TCXO_VOLTAGE
+        sxIf->setTCXOVoltage(SX126X_DIO3_TCXO_VOLTAGE);
+#endif
+        if (!sxIf->init()) {
             LOG_WARN("No SX1268 radio");
-            delete rIf;
+            delete sxIf;
             rIf = NULL;
         } else {
             LOG_INFO("SX1268 init success");
+            rIf = sxIf;
             radioType = SX1268_RADIO;
         }
     }

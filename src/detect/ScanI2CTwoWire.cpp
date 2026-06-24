@@ -80,6 +80,11 @@ ScanI2C::DeviceType ScanI2CTwoWire::probeOLED(ScanI2C::DeviceAddress addr) const
     } while ((r != r_prev) && (c < 4));
     LOG_DEBUG("0x%x subtype probed in %i tries ", r, c);
 
+    if (o_probe == ScanI2C::DeviceType::SCREEN_UNKNOWN) {
+        logFoundDevice("SSD1306 (Fallback)", (uint8_t)addr.address);
+        o_probe = SCREEN_SSD1306;
+    }
+
     return o_probe;
 }
 uint16_t ScanI2CTwoWire::getRegisterValue(const ScanI2CTwoWire::RegisterLocation &registerLocation,
