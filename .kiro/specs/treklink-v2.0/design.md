@@ -11,12 +11,10 @@
 > The v2.0 board has a hardware limitation where power only latches after a successful flash drives GPIO 9 high. A blank flash requires a manual boot clamp. Additionally, Linux `ModemManager` causes a reset loop by probing the ESP32-S3 USB CDC.
 > **Flashing/Recovery Boot Sequence:**
 > 1. Stop ModemManager on the host PC: `sudo systemctl stop ModemManager`
-> 2. Press and hold both `POWER` and `SELECT` (GPIO 0) simultaneously, then immediately click `RESET`.
-> 3. Release `SELECT`, keeping `POWER` held.
-> 4. Clamp the power terminals (e.g. use a clamp on the `POWER` button) to act as a hold and keep the 3.3V rail active.
-> 5. Release manual pressure on the power button (the clamp now holds the power state).
-> 6. Run the flashing command: `pio run -e treklink-v2 -t upload` (keep clamp on until completed).
-> 7. Release power (remove clamp) and verify that the device stays on automatically (via GPIO 9 latch) and the SH1106 OLED displays the UI.
+> 2. Select the appropriate sequence:
+>    - **If brand new (unflashed):** Press and hold both `POWER` and `SELECT` (GPIO 0) simultaneously, then immediately click `RESET`. Release `SELECT`, keeping `POWER` held. Clamp the `POWER` button to hold it down physically, then release manual pressure. Run: `pio run -e treklink-v2 -t upload` (keep clamp on until completed).
+>    - **If already flashed (reflashing):** Clamp the `POWER` button physically *before* starting the upload. (Erasing/writing the flash drops the GPIO 9 firmware latch instantly, causing a power cut unless held down physically). Run: `pio run -e treklink-v2 -t upload` (keep clamp on until completed).
+> 3. Release power (remove clamp) and verify that the device stays on automatically (via GPIO 9 latch) and the OLED displays the UI.
 
 ---
 

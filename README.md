@@ -126,29 +126,33 @@ Pairing via the mobile app will advertise the BLE name as `TrekLink_XXXX` (based
 
 ### Resolution & Flashing Sequence
 
-To recover and flash the v2.0 board, follow this exact sequence:
+To flash or recover the v2.0 board, select the appropriate method below:
 
 1. **Stop ModemManager (on Host PC):**
    ```bash
    sudo systemctl stop ModemManager
    ```
 
-2. **Manual Download & Recovery Sequence:**
+2. **Choose Flashing Method:**
+
+   #### Method A: If the board is brand new / unflashed
    - **Step 1:** Press and hold `POWER` and `SELECT` (acts as BOOT / GPIO 0) buttons simultaneously, then immediately click `RESET`.
    - **Step 2:** Release `SELECT`, but continue holding `POWER`.
-   - **Step 3:** Clamp the power terminals (e.g. use a clamp on the `POWER` button) so the clamp acts as a physical hold. This keeps the 3.3V rail powered without manual hold.
-   - **Step 4:** Release manual pressure on the power button. The clamp now holds the power state.
-   - **Step 5:** Keep the clamp on until the upload finishes.
+   - **Step 3:** Place a clamp on the `POWER` button to keep the 3.3V rail active without manual pressure.
+   - **Step 4:** Release manual pressure. The clamp now holds the power state.
+   - **Step 5:** Run the upload command: `pio run -e treklink-v2 -t upload`.
+   - **Step 6:** Keep the clamp on until the upload finishes. Once completed, remove the clamp. The latch on GPIO 9 will now hold the power state automatically.
 
-3. **Flash the Firmware:**
-   ```bash
-   pio run -e treklink-v2 -t upload
-   ```
+   #### Method B: If the board is already flashed (Reflashing)
+   - **Step 1:** Place a clamp on the `POWER` button to hold it down physically.
+     > [!IMPORTANT]
+     > Flashing erases/resets the flash memory. As soon as the upload begins, the firmware-driven GPIO 9 latch drops, which will instantly cut power to the 3.3V rail unless a physical clamp holds the power button down.
+   - **Step 2:** Run the upload command: `pio run -e treklink-v2 -t upload`.
+   - **Step 3:** Keep the clamp on until the upload finishes. Once completed, remove the clamp. The newly flashed firmware will latch GPIO 9 and keep the board powered.
 
-4. **Post-Flash Verification:**
-   - Release the power button/remove the clamp.
-   - Verify that the device stays powered on automatically (confirming that the latch on GPIO 9 is holding).
-   - Check that the SH1106 OLED screen turns on and displays the UI.
+3. **Post-Flash Verification:**
+   - Verify that the device stays powered on automatically after the clamp is removed.
+   - Check that the SH1106 or SSD1306 OLED screen turns on and displays the UI.
 
 ---
 
