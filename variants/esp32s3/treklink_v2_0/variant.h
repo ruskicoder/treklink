@@ -19,6 +19,9 @@
 #define I2C_SDA 5
 #define I2C_SCL 6
 
+// Display Configuration
+#define HAS_SCREEN 1
+
 // GPS Module (UART1 + Power Enable)
 #undef GPS_RX_PIN
 #undef GPS_TX_PIN
@@ -46,13 +49,15 @@
 #define PIN_VIBRATOR 12      // Vibration motor
 #define PIN_VIBRATION PIN_VIBRATOR
 #define LED_PIN 2            // Notification LED
-#define LED_STATE_ON 1       // Active-High LED
+#define LED_STATE_ON 0       // Active-Low LED
 
 // Power Management Latch
 #define POWER_LATCH_PIN 9    // Power Latch pin (Active-High)
 
 // LoRa SX1268 SPI Configuration
 #define USE_SX1268
+#define SX126X_DIO3_TCXO_VOLTAGE 1.8
+#define TCXO_OPTIONAL
 #define LORA_SCK 21
 #define LORA_MOSI 38
 #define LORA_MISO 39

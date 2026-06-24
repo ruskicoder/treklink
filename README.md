@@ -106,6 +106,57 @@ Pairing via the mobile app will advertise the BLE name as `TrekLink_XXXX` (based
 
 ---
 
+## ⚠️ Hardware Caution: Flashing & Recovery (v2.0 Only)
+
+> [!CAUTION]
+> **CRITICAL, must attention!**
+> The TrekLink v2.0 Custom PCB has a known hardware limitation affecting the boot power latch and USB CDC reset lines.
+> **Note:** Other variants (v1.0, v3.0, v4.0) are NOT affected by this issue.
+
+### Root Cause Analysis
+1. **Linux ModemManager Probe (Major):**
+   - Linux `ModemManager` detects `/dev/ttyACM0` (native ESP32-S3 USB CDC).
+   - It probes the port by opening it and toggling DTR/RTS lines.
+   - On the ESP32-S3, toggling DTR/RTS forces a chip reset, dropping the USB connection and creating a cyclic disconnect/reconnect loop.
+2. **Soft-Latch Power Drop:**
+   - On a blank or unlatched flash, `IO9_PWR_EN` (GPIO 9) remains low/floating.
+   - Power stays ON only while physically holding the `POWER` button (SW3). Releasing it instantly cuts the 3.3V rail.
+
+---
+
+### Resolution & Flashing Sequence
+
+To flash or recover the v2.0 board, select the appropriate method below:
+
+1. **Stop ModemManager (on Host PC):**
+   ```bash
+   sudo systemctl stop ModemManager
+   ```
+
+2. **Choose Flashing Method:**
+
+   #### Method A: If the board is brand new / unflashed
+   - **Step 1:** Press and hold `POWER` and `SELECT` (acts as BOOT / GPIO 0) buttons simultaneously, then immediately click `RESET`.
+   - **Step 2:** Release `SELECT`, but continue holding `POWER`.
+   - **Step 3:** Place a clamp on the `POWER` button to keep the 3.3V rail active without manual pressure.
+   - **Step 4:** Release manual pressure. The clamp now holds the power state.
+   - **Step 5:** Run the upload command: `pio run -e treklink-v2 -t upload`.
+   - **Step 6:** Keep the clamp on until the upload finishes. Once completed, remove the clamp. The latch on GPIO 9 will now hold the power state automatically.
+
+   #### Method B: If the board is already flashed (Reflashing)
+   - **Step 1:** Place a clamp on the `POWER` button to hold it down physically.
+     > [!IMPORTANT]
+     > Flashing erases/resets the flash memory. As soon as the upload begins, the firmware-driven GPIO 9 latch drops, which will instantly cut power to the 3.3V rail unless a physical clamp holds the power button down.
+   - **Step 2:** Run the upload command: `pio run -e treklink-v2 -t upload`.
+   - **Step 3:** Keep the clamp on until the upload finishes. Once completed, remove the clamp. The newly flashed firmware will latch GPIO 9 and keep the board powered.
+
+3. **Post-Flash Verification:**
+   - Verify that the device stays powered on automatically after the clamp is removed.
+   - Check that the SH1106 or SSD1306 OLED screen turns on and displays the UI.
+
+---
+
+
 ## 📜 License
 
 - **TrekLink Custom Additions:** MIT License
