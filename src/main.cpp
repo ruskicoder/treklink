@@ -260,11 +260,7 @@ static int32_t ledBlinker()
     ledBlink.set(ledOn);
 
     // have a very sparse duty cycle of LED being on, unless charging, then blink 0.5Hz square wave rate to indicate that
-#ifdef TREKLINK_VARIANT
-    return powerStatus->getIsCharging() ? 1000 : (ledOn ? 50 : 950);
-#else
     return powerStatus->getIsCharging() ? 1000 : (ledOn ? 1 : 1000);
-#endif
 }
 
 uint32_t timeLastPowered = 0;
