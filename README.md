@@ -133,7 +133,14 @@ To flash or recover the v2.0 board, select the appropriate method below:
    sudo systemctl stop ModemManager
    ```
 
-2. **Choose Flashing Method:**
+2. **Observe USB Enumeration (Diagnostic):**
+   Before connecting the board, start a kernel log watcher to identify USB device nodes and detect ModemManager interference:
+   ```bash
+   sudo dmesg -wH
+   ```
+   Connect the v2.0 board via USB-C. Watch for `cdc_acm` or `ttyACM0` device recognition messages. If you see rapid connect/disconnect cycling, ModemManager is still interfering — stop it first (Step 1). Press `Ctrl+C` to stop dmesg once enumeration is confirmed stable.
+
+3. **Choose Flashing Method:**
 
    #### Method A: If the board is brand new / unflashed
    - **Step 1:** Press and hold `POWER` and `SELECT` (acts as BOOT / GPIO 0) buttons simultaneously, then immediately click `RESET`.
@@ -150,7 +157,7 @@ To flash or recover the v2.0 board, select the appropriate method below:
    - **Step 2:** Run the upload command: `pio run -e treklink-v2 -t upload`.
    - **Step 3:** Keep the clamp on until the upload finishes. Once completed, remove the clamp. The newly flashed firmware will latch GPIO 9 and keep the board powered.
 
-3. **Post-Flash Verification:**
+4. **Post-Flash Verification:**
    - Verify that the device stays powered on automatically after the clamp is removed.
    - Check that the SH1106 or SSD1306 OLED screen turns on and displays the UI.
 
