@@ -9,18 +9,37 @@
 
 #include "configuration.h"
 #include "main.h"
+#include "../../motion/ICM20948Sensor.h"
 
 bool ICM20948FallSensor::init()
 {
+    // Check if the AccelerometerThread's singleton already initialized the hardware
+    // (with magnetometer/compass support). If so, join it — skip the duplicate reset.
+    if (ICM20948Singleton::isInitialized()) {
+        icm = ICM20948Singleton::GetInstance();
+        usingSingleton = true;
+        LOG_INFO("ICM20948FallSensor: Joined existing singleton (compass enabled)");
+
+        // Set fall-detection-appropriate full scale on the already-initialized sensor
+        ICM_20948_fss_t fss;
+        fss.a = gpm8;
+        fss.g = dps500;
+        if (icm->setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), fss) != ICM_20948_Stat_Ok) {
+            LOG_WARN("ICM20948FallSensor: Full scale range setup failed on singleton");
+            return false;
+        }
+
+        LOG_INFO("ICM20948FallSensor: Initialized via singleton (±8g, ±500dps)");
+        return true;
+    }
+
+    // No singleton available — initialize hardware ourselves (fallback, no magnetometer)
     Wire.begin(I2C_SDA, I2C_SCL);
 
     bool success = false;
-    // Probe 0x69 first (default AD0=high)
-    if (icm.begin(Wire, true) == ICM_20948_Stat_Ok) {
+    if (fallbackIcm.begin(Wire, true) == ICM_20948_Stat_Ok) {
         success = true;
-    }
-    // Probe 0x68 (AD0=low)
-    else if (icm.begin(Wire, false) == ICM_20948_Stat_Ok) {
+    } else if (fallbackIcm.begin(Wire, false) == ICM_20948_Stat_Ok) {
         success = true;
     }
 
@@ -29,50 +48,47 @@ bool ICM20948FallSensor::init()
         return false;
     }
 
-    // SW reset to ensure clean startup
-    if (icm.swReset() != ICM_20948_Stat_Ok) {
+    if (fallbackIcm.swReset() != ICM_20948_Stat_Ok) {
         LOG_WARN("ICM20948FallSensor: Reset failed");
         return false;
     }
     delay(100);
 
-    // Wake up sensor
-    if (icm.sleep(false) != ICM_20948_Stat_Ok) {
+    if (fallbackIcm.sleep(false) != ICM_20948_Stat_Ok) {
         LOG_WARN("ICM20948FallSensor: Wakeup failed");
         return false;
     }
 
-    // Set full power mode
-    if (icm.lowPower(false) != ICM_20948_Stat_Ok) {
+    if (fallbackIcm.lowPower(false) != ICM_20948_Stat_Ok) {
         LOG_WARN("ICM20948FallSensor: Power mode config failed");
         return false;
     }
 
-    // Set sample mode to continuous
-    if (icm.setSampleMode((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), ICM_20948_Sample_Mode_Continuous) != ICM_20948_Stat_Ok) {
+    if (fallbackIcm.setSampleMode((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr),
+                                   ICM_20948_Sample_Mode_Continuous) != ICM_20948_Stat_Ok) {
         LOG_WARN("ICM20948FallSensor: Continuous mode set failed");
         return false;
     }
 
-    // Set full scale ranges: Accel=±8g (gpm8), Gyro=±500dps (dps500)
     ICM_20948_fss_t fss;
     fss.a = gpm8;
     fss.g = dps500;
-    if (icm.setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), fss) != ICM_20948_Stat_Ok) {
+    if (fallbackIcm.setFullScale((ICM_20948_Internal_Acc | ICM_20948_Internal_Gyr), fss) != ICM_20948_Stat_Ok) {
         LOG_WARN("ICM20948FallSensor: Full scale range setup failed");
         return false;
     }
 
-    LOG_INFO("ICM20948FallSensor: Initialized (±8g, ±500dps)");
+    icm = &fallbackIcm;
+    usingSingleton = false;
+    LOG_INFO("ICM20948FallSensor: Self-initialized (±8g, ±500dps, no compass)");
     return true;
 }
 
 void ICM20948FallSensor::updateSensorData()
 {
-    // Rate limit I2C transactions to once per 10ms (called by readAccel and readGyro sequentially)
     uint32_t now = millis();
     if (now - lastReadMs >= 10 || lastReadMs == 0) {
-        icm.getAGMT();
+        icm->getAGMT();
         lastReadMs = now;
     }
 }
@@ -80,20 +96,18 @@ void ICM20948FallSensor::updateSensorData()
 bool ICM20948FallSensor::readAccel(SensorVec3 &out)
 {
     updateSensorData();
-    // Convert SparkFun library's milli-g (mg) to m/s²: (val / 1000) * 9.80665
-    out.x = (icm.accX() / 1000.0f) * 9.80665f;
-    out.y = (icm.accY() / 1000.0f) * 9.80665f;
-    out.z = (icm.accZ() / 1000.0f) * 9.80665f;
+    out.x = (icm->accX() / 1000.0f) * 9.80665f;
+    out.y = (icm->accY() / 1000.0f) * 9.80665f;
+    out.z = (icm->accZ() / 1000.0f) * 9.80665f;
     return true;
 }
 
 bool ICM20948FallSensor::readGyro(SensorVec3 &out)
 {
     updateSensorData();
-    // Convert SparkFun library's degrees per second (dps) to rad/s: val * (PI / 180)
-    out.x = icm.gyrX() * (PI / 180.0f);
-    out.y = icm.gyrY() * (PI / 180.0f);
-    out.z = icm.gyrZ() * (PI / 180.0f);
+    out.x = icm->gyrX() * (PI / 180.0f);
+    out.y = icm->gyrY() * (PI / 180.0f);
+    out.z = icm->gyrZ() * (PI / 180.0f);
     return true;
 }
 

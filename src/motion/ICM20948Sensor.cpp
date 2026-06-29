@@ -209,6 +209,7 @@ ICM20948Singleton::ICM20948Singleton() {}
 ICM20948Singleton::~ICM20948Singleton() {}
 
 ICM20948Singleton *ICM20948Singleton::pinstance{nullptr};
+bool ICM20948Singleton::initialized = false;
 
 // Initialise the ICM20948 Sensor
 bool ICM20948Singleton::init(ScanI2C::FoundDevice device)
@@ -258,6 +259,8 @@ bool ICM20948Singleton::init(ScanI2C::FoundDevice device)
         LOG_DEBUG("ICM20948 init magnetometer - %s", statusString());
         return false;
     }
+
+    initialized = true;
 
 #ifdef ICM_20948_INT_PIN
 

@@ -78,6 +78,9 @@
 // Default timezone for TrekLink (Vietnam, GMT+7)
 #define DEFAULT_TIMEZONE "ICT-7"
 
+// Default compass orientation — adjust to match ICM-20948 mounting rotation on PCB
+#define COMPASS_ORIENTATION meshtastic_Config_DisplayConfig_CompassOrientation_DEGREES_0
+
 // TrekLink variant flags
 #ifndef TREKLINK_VARIANT
 #define TREKLINK_VARIANT

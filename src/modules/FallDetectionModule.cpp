@@ -4,6 +4,9 @@
  *
  * IMU-agnostic: uses FallSensorInterface abstraction.
  * Sensor adapter is injected via constructor (MPU6050, ICM20948, QMI8658).
+ *
+ * Self-calibration: noise floor measured at first boot, thresholds adjusted
+ * per-chip and persisted in NVS.
  */
 
 #include "FallDetectionModule.h"
@@ -25,9 +28,8 @@ FallDetectionModule::FallDetectionModule(FallSensorInterface *sensor)
       OSThread("FallDetection"),
       currentState(MONITORING),
       sensor(sensor),
-      sensorInitialized(false),  // F5: Lazy init
+      sensorInitialized(false),
       freefallStartTime(0),
-      impactTime(0),
       inactivityStartTime(0),
       prealarmStartTime(0),
       lastAlarmBeepTime(0),
@@ -50,20 +52,18 @@ FallDetectionModule::~FallDetectionModule()
 void FallDetectionModule::transitionToState(FallState newState)
 {
     if (currentState == newState) return;
-    
+
     LOG_DEBUG("FallDetection: State transition %d -> %d", currentState, newState);
     currentState = newState;
 }
 
 float FallDetectionModule::calculateTotalAcceleration(const SensorVec3 &accel)
 {
-    // Calculate magnitude of acceleration vector, convert to g-force
     return sqrt(sq(accel.x) + sq(accel.y) + sq(accel.z)) / 9.81f;
 }
 
 float FallDetectionModule::calculateTotalGyro(const SensorVec3 &gyro)
 {
-    // Calculate magnitude of gyroscope vector
     return sqrt(sq(gyro.x) + sq(gyro.y) + sq(gyro.z));
 }
 
@@ -71,11 +71,10 @@ bool FallDetectionModule::checkInactivity(const SensorVec3 &accel, const SensorV
 {
     float totalAccel = calculateTotalAcceleration(accel);
     float totalGyro = calculateTotalGyro(gyro);
-    
-    // Check if device is stationary (acceleration near 1g, no rotation)
-    bool accelStill = (fabs(totalAccel - 1.0f) < 0.2f); // Within 0.2g of 1g
-    bool gyroStill = (totalGyro < GYRO_STILLNESS_THRESHOLD);
-    
+
+    bool accelStill = (fabs(totalAccel - 1.0f) < 0.2f);
+    bool gyroStill = (totalGyro < gyroStillnessThreshold);
+
     return (accelStill && gyroStill);
 }
 
@@ -88,7 +87,6 @@ void FallDetectionModule::cancelFallAlarm()
     }
 }
 
-// F21: SOS exit path — cancels auto-SOS (called by SOS hold 3s)
 void FallDetectionModule::cancelAutoSOS()
 {
     if (currentState == SOS_TRIGGERED) {
@@ -113,13 +111,11 @@ void FallDetectionModule::deactivatePreAlarm()
     isBeepOn = false;
 }
 
-// F3: Robust alarm feedback with explicit isBeepOn state tracking
 void FallDetectionModule::updateAlarmFeedback()
 {
     unsigned long elapsed = millis() - lastAlarmBeepTime;
 
     if (elapsed >= ALARM_BEEP_INTERVAL) {
-        // Start new beep cycle
         lastAlarmBeepTime = millis();
         isBeepOn = true;
 
@@ -130,7 +126,6 @@ void FallDetectionModule::updateAlarmFeedback()
         digitalWrite(PIN_VIBRATOR, HIGH);
 #endif
     } else if (isBeepOn && elapsed >= 200) {
-        // End beep after 200ms (200ms on, 800ms off)
         isBeepOn = false;
 
 #ifdef PIN_BUZZER
@@ -145,35 +140,27 @@ void FallDetectionModule::updateAlarmFeedback()
 void FallDetectionModule::triggerAutoSOS()
 {
     LOG_CRIT("FallDetection: AUTO-SOS TRIGGERED!");
-    
-    // 1. Send emergency position packet via helper
+
     TrekLinkSOSHelper::instance().broadcastPosition();
-    
-    // 2. Send SOS text message with fall context
     TrekLinkSOSHelper::instance().sendSOSTextMessage("SOS - FALL DETECTED");
-    
-    // 3. Start SOS Morse code LUT pattern (fall-specific buzzer pattern)
+
     sosPatternStartTime = millis();
     sosBuzzerOn = false;
 
 #ifdef PIN_BUZZER
-    // F4: Acquire buzzer via BuzzerManager (already acquired during PRE_ALARM, re-acquire for safety)
     BuzzerManager::instance().acquire(OWNER_FALL);
 #endif
-
-    // F22: Vibrator will be pulsed in sync with SOS pattern in runOnce()
 }
 
-// F12: LUT-based SOS Morse pattern — O(1) per call, no loop/stack allocation
 void FallDetectionModule::updateSOSBuzzerPattern()
 {
 #ifndef PIN_BUZZER
-    return; // No buzzer available
+    return;
 #else
     uint32_t elapsed = millis() - sosPatternStartTime;
     uint8_t index = (elapsed / 200) % SOS_LUT_LEN;
     bool shouldBeOn = SOS_LUT[index];
-    
+
     if (shouldBeOn != sosBuzzerOn) {
         BuzzerManager::instance().write(shouldBeOn ? 128 : 0);
         sosBuzzerOn = shouldBeOn;
@@ -181,137 +168,223 @@ void FallDetectionModule::updateSOSBuzzerPattern()
 #endif
 }
 
+// ----------------------------------------------------------------------
+// Phase 2: Self-calibration
+// ----------------------------------------------------------------------
+
+void FallDetectionModule::collectCalibrationSample(const SensorVec3 &accel, const SensorVec3 &gyro)
+{
+    accelStats.sum_x += accel.x;
+    accelStats.sum_y += accel.y;
+    accelStats.sum_z += accel.z;
+    accelStats.sum_xx += accel.x * accel.x;
+    accelStats.sum_yy += accel.y * accel.y;
+    accelStats.sum_zz += accel.z * accel.z;
+
+    gyroStats.sum_x += gyro.x;
+    gyroStats.sum_y += gyro.y;
+    gyroStats.sum_z += gyro.z;
+    gyroStats.sum_xx += gyro.x * gyro.x;
+    gyroStats.sum_yy += gyro.y * gyro.y;
+    gyroStats.sum_zz += gyro.z * gyro.z;
+}
+
+void FallDetectionModule::finalizeCalibration()
+{
+    float n = (float)CAL_SAMPLES;
+
+    accelStats.mean_x = accelStats.sum_x / n;
+    accelStats.mean_y = accelStats.sum_y / n;
+    accelStats.mean_z = accelStats.sum_z / n;
+    accelStats.std_x  = sqrt(accelStats.sum_xx / n - accelStats.mean_x * accelStats.mean_x);
+    accelStats.std_y  = sqrt(accelStats.sum_yy / n - accelStats.mean_y * accelStats.mean_y);
+    accelStats.std_z  = sqrt(accelStats.sum_zz / n - accelStats.mean_z * accelStats.mean_z);
+
+    gyroStats.mean_x = gyroStats.sum_x / n;
+    gyroStats.mean_y = gyroStats.sum_y / n;
+    gyroStats.mean_z = gyroStats.sum_z / n;
+    gyroStats.std_x  = sqrt(gyroStats.sum_xx / n - gyroStats.mean_x * gyroStats.mean_x);
+    gyroStats.std_y  = sqrt(gyroStats.sum_yy / n - gyroStats.mean_y * gyroStats.mean_y);
+    gyroStats.std_z  = sqrt(gyroStats.sum_zz / n - gyroStats.mean_z * gyroStats.mean_z);
+
+    float accelNoise = (accelStats.std_x + accelStats.std_y + accelStats.std_z) / 3.0f;
+    float gyroNoise  = (gyroStats.std_x + gyroStats.std_y + gyroStats.std_z) / 3.0f;
+
+    calibratedFreefallThreshold = fmin(1.0f, fmax(0.3f, 3.5f * accelNoise));
+    calibratedGyroStillness     = fmin(0.3f, fmax(0.05f, 3.0f * gyroNoise));
+
+    LOG_INFO("FallDetection: Calibration complete — accelNoise=%.4fg, freefall=%.2fg, gyroStill=%.3frad/s",
+             accelNoise, calibratedFreefallThreshold, calibratedGyroStillness);
+}
+
+void FallDetectionModule::saveCalibration()
+{
+    Preferences prefs;
+    prefs.begin("fallcal", false);
+    prefs.putFloat("ff_thresh", calibratedFreefallThreshold);
+    prefs.putFloat("gyro_still", calibratedGyroStillness);
+    prefs.end();
+}
+
+void FallDetectionModule::loadCalibration()
+{
+    Preferences prefs;
+    prefs.begin("fallcal", true);
+    if (prefs.isKey("ff_thresh")) {
+        calibratedFreefallThreshold = prefs.getFloat("ff_thresh", 0.5f);
+        calibratedGyroStillness     = prefs.getFloat("gyro_still", 0.1f);
+        calPhase = CAL_COMPLETE;
+        LOG_INFO("FallDetection: Loaded stored calibration (ff=%.2f, gyro=%.3f)",
+                 calibratedFreefallThreshold, calibratedGyroStillness);
+    }
+    prefs.end();
+}
+
+// ----------------------------------------------------------------------
+// Main run loop
+// ----------------------------------------------------------------------
+
 int32_t FallDetectionModule::runOnce()
 {
-    // No sensor → fall detection disabled (e.g., v3.0 T-Beam, no IMU)
     if (!sensor) {
-        return disable(); // Stop thread permanently
+        return disable();
     }
 
-    // F5: Lazy init — attempt sensor init in thread context with 5s retry
+    // F5: Lazy init
     if (!sensorInitialized) {
         if (!sensor->init()) {
             LOG_WARN("FallDetection: %s not ready, retrying in 5s", sensor->sensorName());
-            return 5000; // Retry in 5 seconds
+            return 5000;
         }
-        
-        sensorInitialized = true;
-        LOG_INFO("FallDetection: %s initialized, state=MONITORING", sensor->sensorName());
 
-        // Safety: ensure vibrator pin is OUTPUT (may already be set by TrekLinkButtonModule)
+        sensorInitialized = true;
+        LOG_INFO("FallDetection: %s initialized", sensor->sensorName());
+
 #ifdef PIN_VIBRATOR
         pinMode(PIN_VIBRATOR, OUTPUT);
         digitalWrite(PIN_VIBRATOR, LOW);
 #endif
+
+        // Enter self-calibration phase
+        calPhase = CAL_COLLECTING;
+        calSampleCount = 0;
+        memset(&accelStats, 0, sizeof(accelStats));
+        memset(&gyroStats, 0, sizeof(gyroStats));
+
+        loadCalibration();
+        if (calPhase == CAL_COMPLETE) {
+            // Use stored calibrated thresholds for runtime
+            freefallThreshold = calibratedFreefallThreshold;
+            gyroStillnessThreshold = calibratedGyroStillness;
+            LOG_INFO("FallDetection: Using stored calibration, entering MONITORING");
+            return 100;
+        }
+
+        LOG_INFO("FallDetection: Starting self-calibration (5s stationary at 50Hz)...");
+        return CAL_RATE_MS;
     }
 
-    // F14: In SOS_TRIGGERED, skip I2C reads — only update buzzer/vibrator/LED
+    // Phase 2: Calibration data collection
+    if (calPhase == CAL_COLLECTING) {
+        SensorVec3 calAccel, calGyro;
+        sensor->readAccel(calAccel);
+        sensor->readGyro(calGyro);
+        collectCalibrationSample(calAccel, calGyro);
+        calSampleCount++;
+
+        if (calSampleCount >= CAL_SAMPLES) {
+            finalizeCalibration();
+            saveCalibration();
+            calPhase = CAL_COMPLETE;
+
+            // Apply calibrated thresholds to runtime values
+            freefallThreshold = calibratedFreefallThreshold;
+            gyroStillnessThreshold = calibratedGyroStillness;
+
+            LOG_INFO("FallDetection: Calibration applied, entering MONITORING");
+        }
+
+        return CAL_RATE_MS;
+    }
+
+    // F14: In SOS_TRIGGERED, skip I2C reads
     if (currentState == SOS_TRIGGERED) {
         updateSOSBuzzerPattern();
 
 #ifdef PIN_VIBRATOR
-        // F22: Pulse vibrator in sync with SOS pattern (saves ~50% motor power)
         digitalWrite(PIN_VIBRATOR, sosBuzzerOn ? HIGH : LOW);
 #endif
 
 #ifdef LED_PIN
-        // F23: 2Hz LED strobe during auto-SOS
         digitalWrite(LED_PIN, (millis() / 250) % 2);
 #endif
 
-        return 200; // F14: Align with 200ms LUT slots, no I2C needed
+        return 200;
     }
 
-    // Read sensor data via FallSensorInterface (only for non-SOS states)
+    // Read sensor data
     SensorVec3 accel, gyro;
     if (!sensor->readAccel(accel) || !sensor->readGyro(gyro)) {
         LOG_WARN("FallDetection: Sensor read failed");
-        return 500; // Retry
+        return 500;
     }
-    
+
     float totalAccel = calculateTotalAcceleration(accel);
     float totalGyro = calculateTotalGyro(gyro);
     unsigned long now = millis();
-    
+
     switch (currentState) {
     case MONITORING:
-        // Detect freefall (total acceleration < 0.5g)
-        if (totalAccel < FREEFALL_THRESHOLD) {
+        if (totalAccel < freefallThreshold) {
             freefallStartTime = now;
             transitionToState(FREEFALL_DETECTED);
             LOG_DEBUG("FallDetection: Freefall detected (%.2fg)", totalAccel);
         }
         break;
-        
+
     case FREEFALL_DETECTED:
-        // Check if still in freefall
-        if (totalAccel >= FREEFALL_THRESHOLD) {
-            // Freefall ended, check duration
+        if (totalAccel >= freefallThreshold) {
             unsigned long freefallDuration = now - freefallStartTime;
-            
+
             if (freefallDuration >= FREEFALL_MIN_DURATION) {
-                // Valid freefall, now wait for impact
-                impactTime = now;
-                transitionToState(IMPACT_DETECTED);
-                LOG_INFO("FallDetection: Freefall confirmed, waiting for impact");
+                // Fall confirmed — bypass impact gate, monitor for inactivity directly
+                inactivityStartTime = now;
+                transitionToState(INACTIVITY_DETECTED);
+                LOG_WARN("FallDetection: Fall detected (freefall %lums), monitoring for inactivity",
+                         freefallDuration);
             } else {
-                // Too short, false alarm
                 transitionToState(MONITORING);
                 LOG_DEBUG("FallDetection: Freefall too short (%lums), ignoring", freefallDuration);
             }
         }
         break;
-        
-    case IMPACT_DETECTED:
-        // Look for high-G impact within 2 seconds of freefall
-        if (totalAccel > IMPACT_THRESHOLD) {
-            inactivityStartTime = now;
-            transitionToState(INACTIVITY_DETECTED);
-            LOG_WARN("FallDetection: Impact detected (%.2fg), monitoring for inactivity", totalAccel);
-        } else if ((now - impactTime) > 2000) {
-            // No impact detected within 2s, false alarm
-            transitionToState(MONITORING);
-            LOG_DEBUG("FallDetection: No impact after freefall, false alarm");
-        }
-        break;
-        
+
     case INACTIVITY_DETECTED:
-        // Check for movement/activity
         if (!checkInactivity(accel, gyro)) {
-            // User is moving, cancel fall detection
             transitionToState(MONITORING);
             LOG_INFO("FallDetection: Movement detected, user is OK");
         } else if ((now - inactivityStartTime) >= INACTIVITY_DURATION) {
-            // Inactivity threshold reached, enter pre-alarm
             prealarmStartTime = now;
             lastAlarmBeepTime = now;
             transitionToState(PRE_ALARM);
             activatePreAlarm();
         }
         break;
-        
+
     case PRE_ALARM:
-        // Update alarm feedback (beeping/vibration)
         updateAlarmFeedback();
-        
-        // Check for timeout
         if ((now - prealarmStartTime) >= PREALARM_TIMEOUT) {
-            // Timeout reached, trigger auto-SOS
             transitionToState(SOS_TRIGGERED);
             triggerAutoSOS();
         }
-        // Note: User cancellation handled by cancelFallAlarm() (any button)
         break;
 
     default:
         break;
     }
-    
-    // F14: Adaptive polling — 2Hz idle, 10Hz active detection
-    switch (currentState) {
-        case MONITORING:    return 500;   // 2Hz idle (saves 80% I2C reads)
-        default:            return 100;   // 10Hz active detection
-    }
+
+    // 10Hz polling in all active states (including MONITORING)
+    return 100;
 }
 
 #else

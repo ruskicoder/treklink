@@ -50,6 +50,7 @@ class ICM20948Singleton : public ICM_20948_I2C
 {
   private:
     static ICM20948Singleton *pinstance;
+    static bool initialized;
 
   protected:
     ICM20948Singleton();
@@ -58,6 +59,9 @@ class ICM20948Singleton : public ICM_20948_I2C
   public:
     // Create a singleton instance (not thread safe)
     static ICM20948Singleton *GetInstance();
+
+    // Check if the singleton has been fully initialized (hardware + magnetometer ready)
+    static bool isInitialized() { return initialized; }
 
     // Singletons should not be cloneable.
     ICM20948Singleton(ICM20948Singleton &other) = delete;
